@@ -3,8 +3,11 @@
 import json
 import logging
 import os
+import re
 import sqlite3
 from pathlib import Path
+
+import openpyxl
 
 logger = logging.getLogger(__name__)
 
@@ -16,6 +19,11 @@ if not os.path.isdir(os.path.dirname(DB_PATH)):
 PI_SHEET_PATH = os.environ.get(
     "PI_SHEET_PATH",
     os.path.join(os.path.dirname(__file__), "..", "pi_sheet_data.json"),
+)
+
+EXCEL_PATH = os.environ.get(
+    "EXCEL_PATH",
+    os.path.join(os.path.dirname(__file__), "..", "pi_academic_session.xlsx"),
 )
 
 TEACHER_DATA = [
@@ -172,6 +180,196 @@ def init_db():
     logger.info(f"Database initialized at {DB_PATH}")
 
 
+def _normalize_phone(raw: str) -> str:
+    """Normalize a phone number to 10-digit Indian format. Returns '' if invalid."""
+    phone = str(raw).strip().replace(" ", "").replace("-", "").replace("+", "")
+    # Handle float format from Excel (e.g. '9818311160.0')
+    if "." in phone:
+        phone = phone.split(".")[0]
+    # Handle comma-separated numbers (e.g. '8368260266, 9899536166') — take first
+    if "," in phone:
+        phone = phone.split(",")[0].strip()
+    # Remove country code prefix
+    if phone.startswith("91") and len(phone) > 10:
+        phone = phone[2:]
+    if phone.startswith("0") and len(phone) == 11:
+        phone = phone[1:]
+    if len(phone) != 10 or not phone.isdigit():
+        return ""
+    return phone
+
+
+def _upsert_parent(
+    conn: sqlite3.Connection,
+    phone: str,
+    child_name: str,
+    grade: str,
+    parent_name: str,
+) -> int:
+    """Insert or update a parent record with child data. Returns 1 if new parent inserted, 0 otherwise."""
+    existing = conn.execute(
+        "SELECT id, children FROM users WHERE phone = ?", (phone,)
+    ).fetchone()
+    entry = {"name": child_name, "grade": grade}
+    if existing:
+        children = json.loads(existing["children"] or "[]")
+        if entry not in children:
+            children.append(entry)
+            conn.execute(
+                "UPDATE users SET children = ? WHERE id = ?",
+                (json.dumps(children), existing["id"]),
+            )
+        return 0
+    children_json = json.dumps([entry])
+    conn.execute(
+        "INSERT OR IGNORE INTO users (phone, name, role, grade, children) VALUES (?, ?, ?, ?, ?)",
+        (phone, parent_name, "parent", grade, children_json),
+    )
+    return 1
+
+
+def _seed_from_excel(conn: sqlite3.Connection, excel_path: Path) -> int:
+    """Parse the PI Academic Session Excel file and seed parent-child relationships.
+
+    The Excel has one sheet per grade (e.g. 'Grade 1A', 'Nursery 1', 'Popsicles 1').
+    Each sheet has columns like: S.No., Admission No, STUDENT NAME, Grade,
+    FATHER'S NAME, FATHER MOBILE NO., MOTHER NAME, MOTHER MOBILE NO.
+    """
+    wb = openpyxl.load_workbook(excel_path, read_only=True, data_only=True)
+    new_parents = 0
+
+    for sheet_name in wb.sheetnames:
+        ws = wb[sheet_name]
+        rows = list(ws.iter_rows(values_only=True))
+        if not rows:
+            continue
+
+        # Find the header row (look for 'STUDENT NAME' or similar)
+        header_idx = -1
+        header_map: dict[str, int] = {}
+        for i, row in enumerate(rows):
+            row_str = [str(c).strip().upper() if c else "" for c in row]
+            for j, cell in enumerate(row_str):
+                if "STUDENT" in cell and "NAME" in cell:
+                    header_idx = i
+                    break
+            if header_idx >= 0:
+                # Map column names to indices
+                for j, cell in enumerate(row_str):
+                    header_map[cell] = j
+                break
+
+        if header_idx < 0:
+            continue  # No header found, skip this sheet
+
+        # Find relevant column indices using flexible matching
+        def _find_col(*candidates: str) -> int:
+            """Find column index by trying multiple header name candidates."""
+            for candidate in candidates:
+                if candidate in header_map:
+                    return header_map[candidate]
+            return -1
+
+        student_col = _find_col(
+            "STUDENT NAME", "STUDENTNAME", "STUDENT  NAME",
+        )
+        father_name_col = _find_col(
+            "FATHER'S NAME", "FATHERNAME", "FATHER NAME",
+        )
+        father_phone_col = _find_col(
+            "FATHER MOBILE NO.", "FATHERMOBILE", "FATHER MOBILE NO",
+            "FATHER MOBILE", "FATHER'S MOBILE NO.",
+        )
+        mother_name_col = _find_col(
+            "MOTHER NAME", "MOTHERNAME", "MOTHER'S NAME",
+        )
+        mother_phone_col = _find_col(
+            "MOTHER MOBILE NO.", "MOTHERMOBILE", "MOTHER MOBILE NO",
+            "MOTHER MOBILE", "MOTHER'S MOBILE NO.",
+        )
+        grade_col = _find_col("GRADE", "CLASS")
+
+        if student_col < 0:
+            continue  # Can't find student name column
+
+        # Process data rows after header
+        for row in rows[header_idx + 1:]:
+            if not row or len(row) <= student_col:
+                continue
+            child_name = str(row[student_col] or "").strip()
+            if not child_name or child_name.upper() in ("", "STUDENT NAME"):
+                continue
+
+            # Get grade from cell or sheet name
+            grade = ""
+            if grade_col >= 0 and len(row) > grade_col and row[grade_col]:
+                grade = str(row[grade_col]).strip()
+            if not grade:
+                # Derive grade from sheet name
+                grade = sheet_name.strip()
+
+            # Normalize grade format (e.g. "3C" -> "Grade 3C", "Nur 1" -> "Nursery 1")
+            grade = _normalize_grade(grade)
+
+            # Process father
+            if father_phone_col >= 0 and len(row) > father_phone_col and row[father_phone_col]:
+                phone = _normalize_phone(str(row[father_phone_col]))
+                father_name = ""
+                if father_name_col >= 0 and len(row) > father_name_col and row[father_name_col]:
+                    father_name = str(row[father_name_col]).strip()
+                if phone:
+                    new_parents += _upsert_parent(conn, phone, child_name, grade, father_name)
+
+            # Process mother
+            if mother_phone_col >= 0 and len(row) > mother_phone_col and row[mother_phone_col]:
+                phone = _normalize_phone(str(row[mother_phone_col]))
+                mother_name = ""
+                if mother_name_col >= 0 and len(row) > mother_name_col and row[mother_name_col]:
+                    mother_name = str(row[mother_name_col]).strip()
+                if phone:
+                    new_parents += _upsert_parent(conn, phone, child_name, grade, mother_name)
+
+    wb.close()
+    return new_parents
+
+
+def _normalize_grade(grade: str) -> str:
+    """Normalize grade strings to a consistent format."""
+    g = grade.strip()
+    g_upper = g.upper()
+
+    # Already has 'Grade' prefix
+    if g_upper.startswith("GRADE "):
+        return "Grade " + g[6:].strip().upper()
+
+    # Nursery variations
+    if g_upper.startswith("NUR"):
+        num = g_upper.replace("NURSERY", "").replace("NUR", "").strip()
+        if num:
+            return f"Nursery {num}"
+        return g
+
+    # Prep variations
+    if g_upper.startswith("PREP"):
+        num = g_upper.replace("PREP", "").strip()
+        if num:
+            return f"Prep {num}"
+        return g
+
+    # Popsicles
+    if "POPSICLE" in g_upper:
+        return "Popsicles"
+
+    # Bare number+letter like "3C" or "10A"
+    m = re.match(r"^(\d+)\s*([A-Ca-c]?)$", g.strip())
+    if m:
+        num = m.group(1)
+        section = m.group(2).upper()
+        return f"Grade {num}{section}" if section else f"Grade {num}"
+
+    return g
+
+
 def seed_school_data():
     """Seed teachers, admins, and class groups from school data."""
     conn = get_db()
@@ -207,53 +405,41 @@ def seed_school_data():
             (phone, t["name"], "teacher", t["grade"]),
         )
 
-    # Load PI Sheet students and seed parents
+    # Load parents from PI Sheet JSON (may have incomplete phone data)
     pi_path = Path(PI_SHEET_PATH)
+    json_parent_count = 0
     if pi_path.exists():
         try:
             with open(pi_path) as f:
                 students = json.load(f)
-            parent_count = 0
             for s in students:
                 grade = s.get("grade", "")
-                # Support both field name formats
                 child_name = s.get("student_name", "") or s.get("student", "")
                 for phone_key, name_key in [("father_mobile", "father"), ("mother_mobile", "mother")]:
                     phone = s.get(phone_key, "")
                     if not phone:
                         continue
-                    phone = str(phone).strip().replace(" ", "").replace("-", "")
-                    if phone.startswith("91") and len(phone) > 10:
-                        phone = phone[2:]
-                    if len(phone) != 10 or not phone.isdigit():
+                    phone = _normalize_phone(str(phone))
+                    if not phone:
                         continue
-                    existing = conn.execute(
-                        "SELECT id, children FROM users WHERE phone = ?", (phone,)
-                    ).fetchone()
-                    if existing:
-                        children = json.loads(existing["children"] or "[]")
-                        entry = {"name": child_name, "grade": grade}
-                        if entry not in children:
-                            children.append(entry)
-                            conn.execute(
-                                "UPDATE users SET children = ? WHERE id = ?",
-                                (json.dumps(children), existing["id"]),
-                            )
-                    else:
-                        parent_name = s.get(
-                            "father_name", s.get(name_key, "")
-                        ) if name_key == "father" else s.get(
-                            "mother_name", s.get(name_key, "")
-                        )
-                        children = [{"name": child_name, "grade": grade}]
-                        conn.execute(
-                            "INSERT OR IGNORE INTO users (phone, name, role, grade, children) VALUES (?, ?, ?, ?, ?)",
-                            (phone, parent_name, "parent", grade, json.dumps(children)),
-                        )
-                        parent_count += 1
-            logger.info(f"Seeded {parent_count} parents from PI Sheet")
+                    json_parent_count += _upsert_parent(
+                        conn, phone, child_name, grade,
+                        s.get("father_name", s.get(name_key, "")) if name_key == "father"
+                        else s.get("mother_name", s.get(name_key, "")),
+                    )
+            logger.info(f"Seeded {json_parent_count} new parents from PI Sheet JSON")
         except Exception as e:
-            logger.error(f"Failed to load PI Sheet: {e}")
+            logger.error(f"Failed to load PI Sheet JSON: {e}")
+
+    # Load parents from Excel file (has complete phone numbers)
+    excel_path = Path(EXCEL_PATH)
+    excel_parent_count = 0
+    if excel_path.exists():
+        try:
+            excel_parent_count = _seed_from_excel(conn, excel_path)
+            logger.info(f"Seeded {excel_parent_count} new parents from Excel")
+        except Exception as e:
+            logger.error(f"Failed to load Excel: {e}")
 
     # Create class groups
     all_grades = sorted(
