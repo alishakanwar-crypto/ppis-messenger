@@ -7,6 +7,7 @@ bot replies both back to WhatsApp and into the messenger messages table.
 
 import logging
 import os
+from collections import OrderedDict
 
 from fastapi import APIRouter, Request, Response
 
@@ -23,8 +24,8 @@ router = APIRouter()
 
 VERIFY_TOKEN = os.environ.get("WHATSAPP_VERIFY_TOKEN", "ppis-messenger-verify-2026")
 
-# Deduplication: track recently processed message IDs
-_processed_ids: set[str] = set()
+# Deduplication: track recently processed message IDs (OrderedDict preserves insertion order)
+_processed_ids: OrderedDict[str, None] = OrderedDict()
 _MAX_PROCESSED = 5000
 
 
@@ -43,7 +44,7 @@ def _get_or_create_whatsapp_user(conn, phone: str) -> int:
         return row["id"]
     # Create a new user with whatsapp channel marker
     conn.execute(
-        "INSERT INTO users (phone, name, role, channel) VALUES (?, ?, 'parent', 'whatsapp')",
+        "INSERT OR IGNORE INTO users (phone, name, role, channel) VALUES (?, ?, 'parent', 'whatsapp')",
         (normalized, f"WhatsApp {normalized[-4:]}"),
     )
     conn.commit()
@@ -104,12 +105,6 @@ async def receive_webhook(request: Request):
     # Deduplication
     if message_id in _processed_ids:
         return {"status": "duplicate"}
-    _processed_ids.add(message_id)
-    if len(_processed_ids) > _MAX_PROCESSED:
-        # Trim oldest entries (set doesn't guarantee order, but this prevents unbounded growth)
-        excess = len(_processed_ids) - _MAX_PROCESSED
-        for _ in range(excess):
-            _processed_ids.pop()
 
     if not text:
         return {"status": "ok"}
@@ -149,8 +144,17 @@ async def receive_webhook(request: Request):
             (bot_user_id, user_id, bot_reply),
         )
         conn.commit()
-    finally:
+    except Exception:
+        # Don't mark as processed so Meta can retry on transient failures
         conn.close()
+        raise
+
+    conn.close()
+
+    # Mark as processed only after successful DB operations
+    _processed_ids[message_id] = None
+    while len(_processed_ids) > _MAX_PROCESSED:
+        _processed_ids.popitem(last=False)  # evict oldest entry
 
     # Send reply back via WhatsApp
     if is_whatsapp_configured():
