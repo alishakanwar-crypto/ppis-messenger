@@ -132,6 +132,7 @@ async def receive_webhook(request: Request):
 
     # Store in messenger database
     conn = get_db()
+    incoming_committed = False
     try:
         user_id = _get_or_create_whatsapp_user(conn, sender_phone)
         bot_user_id = _get_bot_user_id(conn)
@@ -144,6 +145,7 @@ async def receive_webhook(request: Request):
             (user_id, bot_user_id, text),
         )
         conn.commit()
+        incoming_committed = True
 
         # Get user info for bot context
         user_row = conn.execute(
@@ -164,10 +166,16 @@ async def receive_webhook(request: Request):
         )
         conn.commit()
     except Exception:
-        # Roll back dedup mark so Meta can retry on transient failures
-        _processed_ids.pop(message_id, None)
+        if not incoming_committed:
+            # Nothing persisted yet — remove dedup mark so Meta can retry
+            _processed_ids.pop(message_id, None)
+            conn.close()
+            raise
+        # Incoming message already committed — keep dedup mark to prevent
+        # duplicate on retry, log the error, and return 200 so Meta stops
+        logger.exception("Bot reply failed after incoming message was stored")
         conn.close()
-        raise
+        return {"status": "ok"}
 
     conn.close()
 
