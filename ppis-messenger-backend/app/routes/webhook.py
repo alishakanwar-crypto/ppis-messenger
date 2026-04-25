@@ -5,6 +5,8 @@ the messenger database (so they appear on the app dashboard), and sends
 bot replies both back to WhatsApp and into the messenger messages table.
 """
 
+import hashlib
+import hmac
 import logging
 import os
 from collections import OrderedDict
@@ -23,6 +25,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 VERIFY_TOKEN = os.environ.get("WHATSAPP_VERIFY_TOKEN", "ppis-messenger-verify-2026")
+WHATSAPP_APP_SECRET = os.environ.get("WHATSAPP_APP_SECRET", "")
 
 # Deduplication: track recently processed message IDs (OrderedDict preserves insertion order)
 _processed_ids: OrderedDict[str, None] = OrderedDict()
@@ -92,7 +95,19 @@ async def receive_webhook(request: Request):
     Stores the message in the messenger DB and generates a bot reply
     that is sent both to WhatsApp and stored in the DB.
     """
-    body = await request.json()
+    # Verify X-Hub-Signature-256 from Meta (if app secret is configured)
+    raw_body = await request.body()
+    if WHATSAPP_APP_SECRET:
+        signature = request.headers.get("x-hub-signature-256", "")
+        expected = "sha256=" + hmac.new(
+            WHATSAPP_APP_SECRET.encode(), raw_body, hashlib.sha256
+        ).hexdigest()
+        if not hmac.compare_digest(signature, expected):
+            logger.warning("Webhook signature verification failed")
+            return Response(status_code=403)
+
+    import json as _json
+    body = _json.loads(raw_body)
     parsed = parse_cloud_webhook(body)
 
     if not parsed:
