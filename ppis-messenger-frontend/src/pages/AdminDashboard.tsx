@@ -11,6 +11,8 @@ interface Stats {
   total_broadcasts: number;
   users_by_role: Record<string, number>;
   messages_today: number;
+  messages_by_channel?: Record<string, number>;
+  users_by_channel?: Record<string, number>;
 }
 
 interface ConvItem {
@@ -21,6 +23,7 @@ interface ConvItem {
   last_message_time: string;
   unread_count: number;
   grade?: string;
+  channel?: string;
 }
 
 interface UserItem {
@@ -283,6 +286,34 @@ export default function AdminDashboard() {
                   </div>
                 ))}
               </div>
+              {stats.messages_by_channel && Object.keys(stats.messages_by_channel).length > 0 && (
+                <div className="bg-white rounded-xl p-4 shadow-sm">
+                  <h3 className="font-semibold text-gray-900 mb-3">Messages by Channel</h3>
+                  {Object.entries(stats.messages_by_channel).map(([ch, count]) => (
+                    <div key={ch} className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0">
+                      <span className="flex items-center gap-2">
+                        <span className={`inline-block w-2 h-2 rounded-full ${ch === 'whatsapp' ? 'bg-green-500' : 'bg-blue-500'}`} />
+                        <span className="text-gray-600 capitalize">{ch === 'whatsapp' ? 'WhatsApp' : 'PPIS App'}</span>
+                      </span>
+                      <span className="font-medium">{count}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {stats.users_by_channel && Object.keys(stats.users_by_channel).length > 0 && (
+                <div className="bg-white rounded-xl p-4 shadow-sm">
+                  <h3 className="font-semibold text-gray-900 mb-3">Parents by Channel</h3>
+                  {Object.entries(stats.users_by_channel).map(([ch, count]) => (
+                    <div key={ch} className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0">
+                      <span className="flex items-center gap-2">
+                        <span className={`inline-block w-2 h-2 rounded-full ${ch === 'whatsapp' ? 'bg-green-500' : 'bg-blue-500'}`} />
+                        <span className="text-gray-600 capitalize">{ch === 'whatsapp' ? 'WhatsApp' : 'PPIS App'}</span>
+                      </span>
+                      <span className="font-medium">{count}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           ) : null
         )}
@@ -314,7 +345,12 @@ export default function AdminDashboard() {
                   </div>
                   <div className="ml-3 flex-1 min-w-0">
                     <div className="flex justify-between items-center">
-                      <span className="font-medium text-gray-900 truncate text-sm">{conv.name}</span>
+                      <span className="font-medium text-gray-900 truncate text-sm flex items-center gap-1.5">
+                        {conv.name}
+                        {conv.channel === "whatsapp" && (
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-100 text-green-700">WA</span>
+                        )}
+                      </span>
                       <span className="text-xs text-gray-400">{formatTime(conv.last_message_time)}</span>
                     </div>
                     <p className="text-xs text-gray-500 truncate mt-0.5">{conv.last_message}</p>

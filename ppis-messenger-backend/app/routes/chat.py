@@ -10,11 +10,10 @@ from pydantic import BaseModel
 
 from app.database import get_db
 from app.routes.auth import get_current_user
+from app.services.bot_service import get_bot_response
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
-
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 
 
 class SendMessageRequest(BaseModel):
@@ -28,56 +27,6 @@ class SendMessageRequest(BaseModel):
 
 class MarkReadRequest(BaseModel):
     message_ids: list[int]
-
-
-# ---- Bot AI response ----
-
-async def get_bot_response(message: str, user_name: str, grade: str) -> str:
-    """Get AI response from OpenAI for the school bot."""
-    if not OPENAI_API_KEY:
-        return (
-            "Thank you for your message. For any queries, please contact:\n"
-            "School Helpline: 8800935552\n"
-            "Ms. Harpreet Kaur (Administration Incharge): 9599488106\n\n"
-            "Thank you for your cooperation.\n"
-            "Warm regards,\nPP International School"
-        )
-    try:
-        import httpx
-        async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.post(
-                "https://api.openai.com/v1/chat/completions",
-                headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
-                json={
-                    "model": "gpt-4o-mini",
-                    "messages": [
-                        {
-                            "role": "system",
-                            "content": (
-                                "You are the PP International School assistant. "
-                                "You help parents with school-related queries. "
-                                "Be polite, professional, and concise. "
-                                "Use formal language. No emojis. "
-                                "End with: Thank you for your cooperation. "
-                                "Warm regards, PP International School. "
-                                f"The parent's name is {user_name}, grade: {grade}."
-                            ),
-                        },
-                        {"role": "user", "content": message},
-                    ],
-                    "max_tokens": 500,
-                },
-            )
-            data = resp.json()
-            return data["choices"][0]["message"]["content"]
-    except Exception as e:
-        logger.error(f"OpenAI error: {e}")
-        return (
-            "Thank you for your message. For any queries, please contact:\n"
-            "School Helpline: 8800935552\n"
-            "Ms. Harpreet Kaur: 9599488106\n\n"
-            "Warm regards,\nPP International School"
-        )
 
 
 # ---- Endpoints ----

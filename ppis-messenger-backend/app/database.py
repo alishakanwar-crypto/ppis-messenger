@@ -175,6 +175,20 @@ def init_db():
     except sqlite3.OperationalError:
         pass  # Column already exists
 
+    # Add channel column to users (tracks where user came from: 'app' or 'whatsapp')
+    try:
+        conn.execute("ALTER TABLE users ADD COLUMN channel TEXT DEFAULT 'app'")
+        logger.info("Added channel column to users table")
+    except sqlite3.OperationalError:
+        pass
+
+    # Add channel column to messages (tracks which channel the message came from)
+    try:
+        conn.execute("ALTER TABLE messages ADD COLUMN channel TEXT DEFAULT 'app'")
+        logger.info("Added channel column to messages table")
+    except sqlite3.OperationalError:
+        pass
+
     conn.commit()
     conn.close()
     logger.info(f"Database initialized at {DB_PATH}")
