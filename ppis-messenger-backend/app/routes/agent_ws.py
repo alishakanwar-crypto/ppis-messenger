@@ -136,4 +136,5 @@ async def agent_websocket(websocket: WebSocket):
     except Exception as e:
         logger.error(f"Agent WebSocket error: {e}")
     finally:
-        _agent_ws = None
+        if _agent_ws is websocket:
+            _agent_ws = None

@@ -102,9 +102,13 @@ async def receive_webhook(request: Request):
     sender_phone = parsed["sender"]
     text = parsed["text"]
 
-    # Deduplication
+    # Deduplication — optimistic mark to prevent concurrent duplicates during
+    # async processing (OpenAI can take 20-30s, Meta retries within ~20s)
     if message_id in _processed_ids:
         return {"status": "duplicate"}
+    _processed_ids[message_id] = None
+    while len(_processed_ids) > _MAX_PROCESSED:
+        _processed_ids.popitem(last=False)
 
     if not text:
         return {"status": "ok"}
@@ -145,16 +149,12 @@ async def receive_webhook(request: Request):
         )
         conn.commit()
     except Exception:
-        # Don't mark as processed so Meta can retry on transient failures
+        # Roll back dedup mark so Meta can retry on transient failures
+        _processed_ids.pop(message_id, None)
         conn.close()
         raise
 
     conn.close()
-
-    # Mark as processed only after successful DB operations
-    _processed_ids[message_id] = None
-    while len(_processed_ids) > _MAX_PROCESSED:
-        _processed_ids.popitem(last=False)  # evict oldest entry
 
     # Send reply back via WhatsApp
     if is_whatsapp_configured():
