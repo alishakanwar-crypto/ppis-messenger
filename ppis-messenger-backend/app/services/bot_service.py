@@ -117,24 +117,29 @@ SCHOOL_PHOTO_GALLERY: dict[str, dict] = {
 # Grade search helpers
 # ---------------------------------------------------------------------------
 
-def _grade_search_terms(entry: dict) -> list[str]:
+def _grade_search_patterns(entry: dict) -> list[re.Pattern]:
+    """Build word-boundary regex patterns for a grade entry.
+
+    Uses \\b anchors so that e.g. 'class 1 a' does not match
+    'class 1 annual exams'.
+    """
     grade_lower = entry["grade"].lower()
-    terms = [grade_lower]
+    raw_terms: list[str] = [grade_lower]
     parts = grade_lower.replace("grade ", "").replace("(", "").replace(")", "").strip()
-    terms.append(parts)
-    terms.append(f"class {parts}")
-    terms.append(f"grade {parts}")
+    raw_terms.append(parts)
+    raw_terms.append(f"class {parts}")
+    raw_terms.append(f"grade {parts}")
     spaced = re.sub(r"(\d+)\s*([a-z])", r"\1 \2", parts)
     if spaced != parts:
-        terms.append(spaced)
-        terms.append(f"class {spaced}")
-        terms.append(f"grade {spaced}")
+        raw_terms.append(spaced)
+        raw_terms.append(f"class {spaced}")
+        raw_terms.append(f"grade {spaced}")
     nospace = re.sub(r"(\d+)\s+([a-z])", r"\1\2", parts)
     if nospace != parts:
-        terms.append(nospace)
-        terms.append(f"class {nospace}")
-        terms.append(f"grade {nospace}")
-    return terms
+        raw_terms.append(nospace)
+        raw_terms.append(f"class {nospace}")
+        raw_terms.append(f"grade {nospace}")
+    return [re.compile(r"\b" + re.escape(t) + r"\b") for t in dict.fromkeys(raw_terms)]
 
 
 # ---------------------------------------------------------------------------
@@ -145,8 +150,8 @@ def lookup_teacher(query: str) -> str | None:
     """Look up teacher details based on grade/class mentioned in the query."""
     q = query.lower().strip()
     for entry in TEACHER_DATA:
-        search_terms = _grade_search_terms(entry)
-        if any(term in q for term in search_terms):
+        patterns = _grade_search_patterns(entry)
+        if any(p.search(q) for p in patterns):
             honorific = "Mr." if entry.get("gender") == "male" else "Ms."
             result = f"{entry['grade']}\n"
             result += f"Class Teacher: {honorific} {entry['teacher']}\n"
@@ -165,8 +170,8 @@ def lookup_teacher(query: str) -> str | None:
 def find_teacher_by_grade(query: str) -> dict | None:
     q = query.lower().strip()
     for entry in TEACHER_DATA:
-        search_terms = _grade_search_terms(entry)
-        if any(term in q for term in search_terms):
+        patterns = _grade_search_patterns(entry)
+        if any(p.search(q) for p in patterns):
             return entry
     return None
 
