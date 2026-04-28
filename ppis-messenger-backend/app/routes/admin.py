@@ -39,6 +39,25 @@ async def get_stats(user: dict = Depends(require_admin)):
         "SELECT role, COUNT(*) as c FROM users GROUP BY role"
     ).fetchall()
     users_by_role = {r["role"]: r["c"] for r in role_rows}
+
+    # Channel breakdown (app vs whatsapp)
+    try:
+        channel_rows = conn.execute(
+            "SELECT COALESCE(channel, 'app') as ch, COUNT(*) as c FROM messages GROUP BY ch"
+        ).fetchall()
+        messages_by_channel = {r["ch"]: r["c"] for r in channel_rows}
+    except Exception:
+        messages_by_channel = {"app": total_messages}
+
+    # Users by channel
+    try:
+        user_channel_rows = conn.execute(
+            "SELECT COALESCE(channel, 'app') as ch, COUNT(*) as c FROM users WHERE role = 'parent' GROUP BY ch"
+        ).fetchall()
+        users_by_channel = {r["ch"]: r["c"] for r in user_channel_rows}
+    except Exception:
+        users_by_channel = {}
+
     conn.close()
 
     return {
@@ -48,6 +67,8 @@ async def get_stats(user: dict = Depends(require_admin)):
         "total_broadcasts": total_broadcasts,
         "users_by_role": users_by_role,
         "messages_today": messages_today,
+        "messages_by_channel": messages_by_channel,
+        "users_by_channel": users_by_channel,
     }
 
 
@@ -95,6 +116,12 @@ async def get_all_conversations(
             recip = conn.execute("SELECT name, phone FROM users WHERE id = ?", (row["recipient_id"],)).fetchone()
             recipient_name = recip["name"] or recip["phone"] if recip else ""
 
+        # Safely read channel column (may not exist on older DBs)
+        try:
+            channel = row["channel"] or "app"
+        except (IndexError, KeyError):
+            channel = "app"
+
         messages.append({
             "id": row["id"],
             "sender_id": row["sender_id"],
@@ -110,6 +137,7 @@ async def get_all_conversations(
             "media_url": row["media_url"],
             "created_at": row["created_at"],
             "is_bot": row["is_bot"],
+            "channel": channel,
         })
 
     conn.close()
@@ -124,6 +152,7 @@ async def get_all_conversations(
             "last_message_time": m["created_at"],
             "unread_count": 0,
             "grade": "",
+            "channel": m.get("channel", "app"),
         })
     # Deduplicate by type+id
     seen = set()
