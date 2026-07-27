@@ -1,7 +1,7 @@
 {
-  "name": "PPIS Messenger",
-  "short_name": "PPIS",
-  "description": "PP International School Messenger - Stay connected with your school",
+  "name": "PPIS Campus Care",
+  "short_name": "Campus Care",
+  "description": "PP International School ERP",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#2563eb",

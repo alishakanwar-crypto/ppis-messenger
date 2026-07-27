@@ -10,8 +10,8 @@ export default defineConfig({
       registerType: "autoUpdate",
       injectRegister: "auto",
       manifest: {
-        name: "PPIS School ERP",
-        short_name: "PPIS ERP",
+        name: "PPIS Campus Care",
+        short_name: "Campus Care",
         description: "PP International School ERP",
         display: "standalone",
         orientation: "portrait",
