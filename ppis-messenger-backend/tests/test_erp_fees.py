@@ -113,10 +113,59 @@ class ErpFeesSmokeTests(unittest.TestCase):
             self.assertIsInstance(invoice["gross_paise"], int)
             self.assertIsInstance(invoice["concession_paise"], int)
             self.assertIsInstance(invoice["net_paise"], int)
+            self.assertEqual(invoice["status"], "issued")
             self.assertEqual(
                 invoice["net_paise"],
                 invoice["gross_paise"] - invoice["concession_paise"],
             )
+
+        first_invoice = generated["created"][0]
+        dues_before = self.client.get(
+            f"/api/erp/fees/dues?session_id={session['id']}&grade=Grade%204A",
+            headers=self.admin,
+        )
+        self.assertEqual(dues_before.status_code, 200)
+        self.assertIn(first_invoice["id"], [invoice["id"] for invoice in dues_before.json()["dues"]])
+        overdue_cutoff = self.client.get(
+            f"/api/erp/fees/dues?session_id={session['id']}&grade=Grade%204A&min_days_overdue=30",
+            headers=self.admin,
+        )
+        self.assertEqual(overdue_cutoff.status_code, 200)
+        self.assertNotIn(first_invoice["id"], [invoice["id"] for invoice in overdue_cutoff.json()["dues"]])
+
+        payment_response = self.client.post(
+            "/api/erp/payments",
+            headers={**self.admin, "Idempotency-Key": "batch-payment-test"},
+            json={
+                "student_id": student_ids[0],
+                "session_id": session["id"],
+                "amount_paise": first_invoice["net_paise"],
+                "method": "cash",
+            },
+        )
+        self.assertEqual(payment_response.status_code, 200)
+        payment = payment_response.json()
+        self.assertTrue(payment["receipt_number"])
+        self.assertEqual(payment["amount_paise"], first_invoice["net_paise"])
+
+        student_fees = self.client.get(
+            f"/api/erp/students/{student_ids[0]}/fees?session_id={session['id']}",
+            headers=self.admin,
+        )
+        self.assertEqual(student_fees.status_code, 200)
+        paid_invoice = next(
+            invoice for invoice in student_fees.json()["invoices"]
+            if invoice["id"] == first_invoice["id"]
+        )
+        self.assertEqual(paid_invoice["status"], "paid")
+        self.assertEqual(paid_invoice["paid_paise"], first_invoice["net_paise"])
+
+        dues_after = self.client.get(
+            f"/api/erp/fees/dues?session_id={session['id']}&grade=Grade%204A",
+            headers=self.admin,
+        )
+        self.assertEqual(dues_after.status_code, 200)
+        self.assertNotIn(first_invoice["id"], [invoice["id"] for invoice in dues_after.json()["dues"]])
 
         repeat_response = self.client.post(
             "/api/erp/invoices/generate",
@@ -131,6 +180,7 @@ class ErpFeesSmokeTests(unittest.TestCase):
         repeated = repeat_response.json()
         self.assertEqual(repeated["created"], [])
         self.assertEqual(repeated["skipped_existing"], 2)
+        self.assertEqual(len(repeated["invoices"]), 2)
 
 
 if __name__ == "__main__":
