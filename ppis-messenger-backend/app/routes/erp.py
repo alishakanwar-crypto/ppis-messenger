@@ -6,7 +6,12 @@ import sqlite3
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from app.database import _ist_now, _upsert_erp_guardian, get_db
+from app.database import (
+    _ist_now,
+    _upsert_erp_guardian,
+    get_db,
+    resync_erp_students_from_pi_sheet,
+)
 from app.routes.auth import require_admin
 
 router = APIRouter()
@@ -42,6 +47,11 @@ class StudentUpdate(BaseModel):
     address: str | None = None
     transport: str | None = None
     status: str | None = None
+
+
+class StudentResyncRequest(BaseModel):
+    dry_run: bool = True
+    withdraw: bool = False
 
 
 def _validate_status(status: str) -> str:
@@ -205,6 +215,14 @@ async def get_student(student_id: int, user: dict = Depends(require_admin)):
         return _get_student_detail(conn, student_id)
     finally:
         conn.close()
+
+
+@router.post("/students/resync")
+async def resync_students(
+    body: StudentResyncRequest = StudentResyncRequest(),
+    user: dict = Depends(require_admin),
+):
+    return resync_erp_students_from_pi_sheet(body.dry_run, body.withdraw)
 
 
 @router.post("/students", status_code=201)

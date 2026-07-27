@@ -1,0 +1,298 @@
+[
+  {
+    "gid": "1288447916",
+    "grade": "Grade 4A",
+    "rows": 29,
+    "with_admission_number": 29,
+    "header_row": 0,
+    "admission_col": 1
+  },
+  {
+    "gid": "2004260388",
+    "grade": "Grade 5A",
+    "rows": 29,
+    "with_admission_number": 29,
+    "header_row": 0,
+    "admission_col": 1
+  },
+  {
+    "gid": "1830685668",
+    "grade": "GRADE 12A",
+    "rows": 12,
+    "with_admission_number": 12,
+    "header_row": 0,
+    "admission_col": 1
+  },
+  {
+    "gid": "1370627064",
+    "grade": "Grade 12B",
+    "rows": 18,
+    "with_admission_number": 18,
+    "header_row": 0,
+    "admission_col": 1
+  },
+  {
+    "gid": "1786778811",
+    "grade": "Nursery 2",
+    "rows": 21,
+    "with_admission_number": 21,
+    "header_row": 0,
+    "admission_col": 1
+  },
+  {
+    "gid": "616483027",
+    "grade": "Grade 3B",
+    "rows": 25,
+    "with_admission_number": 25,
+    "header_row": 0,
+    "admission_col": 1
+  },
+  {
+    "gid": "1943511617",
+    "grade": "Grade 8B",
+    "rows": 23,
+    "with_admission_number": 23,
+    "header_row": 0,
+    "admission_col": 1
+  },
+  {
+    "gid": "1102992088",
+    "grade": "Grade 3C",
+    "rows": 25,
+    "with_admission_number": 25,
+    "header_row": 0,
+    "admission_col": 1
+  },
+  {
+    "gid": "352154940",
+    "grade": "Grade 9C",
+    "rows": 23,
+    "with_admission_number": 23,
+    "header_row": 0,
+    "admission_col": 1
+  },
+  {
+    "gid": "81657730",
+    "grade": "Grade 5B",
+    "rows": 30,
+    "with_admission_number": 30,
+    "header_row": 0,
+    "admission_col": 1
+  },
+  {
+    "gid": "2002492962",
+    "grade": "Grade 9B",
+    "rows": 23,
+    "with_admission_number": 0,
+    "header_row": 0,
+    "admission_col": -1
+  },
+  {
+    "gid": "390677163",
+    "grade": "PREP 1",
+    "rows": 24,
+    "with_admission_number": 24,
+    "header_row": 0,
+    "admission_col": 1
+  },
+  {
+    "gid": "2068519553",
+    "grade": "Grade 1B",
+    "rows": 29,
+    "with_admission_number": 29,
+    "header_row": 0,
+    "admission_col": 1
+  },
+  {
+    "gid": "873031775",
+    "grade": "Grade 11A",
+    "rows": 9,
+    "with_admission_number": 9,
+    "header_row": 0,
+    "admission_col": 1
+  },
+  {
+    "gid": "149553903",
+    "grade": "Grade 10A",
+    "rows": 20,
+    "with_admission_number": 20,
+    "header_row": 0,
+    "admission_col": 1
+  },
+  {
+    "gid": "22291716",
+    "grade": "Grade 2A",
+    "rows": 31,
+    "with_admission_number": 31,
+    "header_row": 0,
+    "admission_col": 1
+  },
+  {
+    "gid": "1168194216",
+    "grade": "Grade 6B",
+    "rows": 31,
+    "with_admission_number": 31,
+    "header_row": 0,
+    "admission_col": 1
+  },
+  {
+    "gid": "505784395",
+    "grade": "POPSICLE",
+    "rows": 5,
+    "with_admission_number": 5,
+    "header_row": 0,
+    "admission_col": 1
+  },
+  {
+    "gid": "1571684282",
+    "grade": "Grade 8C",
+    "rows": 24,
+    "with_admission_number": 24,
+    "header_row": 0,
+    "admission_col": 1
+  },
+  {
+    "gid": "353406549",
+    "grade": "Grade 1A",
+    "rows": 29,
+    "with_admission_number": 29,
+    "header_row": 0,
+    "admission_col": 1
+  },
+  {
+    "gid": "1466129543",
+    "grade": "Nursery 1",
+    "rows": 21,
+    "with_admission_number": 21,
+    "header_row": 0,
+    "admission_col": 1
+  },
+  {
+    "gid": "1448970633",
+    "grade": "PREP 3",
+    "rows": 23,
+    "with_admission_number": 23,
+    "header_row": 0,
+    "admission_col": 1
+  },
+  {
+    "gid": "743552850",
+    "grade": "Nursery 3",
+    "rows": 21,
+    "with_admission_number": 21,
+    "header_row": 0,
+    "admission_col": 1
+  },
+  {
+    "gid": "43691386",
+    "grade": "PREP 2",
+    "rows": 22,
+    "with_admission_number": 22,
+    "header_row": 0,
+    "admission_col": 1
+  },
+  {
+    "gid": "1591415360",
+    "grade": "Grade 8A",
+    "rows": 25,
+    "with_admission_number": 25,
+    "header_row": 0,
+    "admission_col": 1
+  },
+  {
+    "gid": "2010955306",
+    "grade": "Grade 3A",
+    "rows": 24,
+    "with_admission_number": 24,
+    "header_row": 0,
+    "admission_col": 1
+  },
+  {
+    "gid": "1384983764",
+    "grade": "Grade 6A",
+    "rows": 31,
+    "with_admission_number": 31,
+    "header_row": 0,
+    "admission_col": 1
+  },
+  {
+    "gid": "1505127962",
+    "grade": "Grade 7A",
+    "rows": 29,
+    "with_admission_number": 0,
+    "header_row": 0,
+    "admission_col": -1
+  },
+  {
+    "gid": "1630447148",
+    "grade": "Grade 9A",
+    "rows": 22,
+    "with_admission_number": 22,
+    "header_row": 0,
+    "admission_col": 1
+  },
+  {
+    "gid": "1059379388",
+    "grade": "Grade 10B",
+    "rows": 21,
+    "with_admission_number": 21,
+    "header_row": 0,
+    "admission_col": 1
+  },
+  {
+    "gid": "187664454",
+    "grade": "Grade 7B",
+    "rows": 30,
+    "with_admission_number": 30,
+    "header_row": 0,
+    "admission_col": 1
+  },
+  {
+    "gid": "573773967",
+    "grade": "Grade 12C",
+    "rows": 4,
+    "with_admission_number": 4,
+    "header_row": 0,
+    "admission_col": 1
+  },
+  {
+    "gid": "1080176279",
+    "grade": "Grade 4B",
+    "rows": 28,
+    "with_admission_number": 28,
+    "header_row": 0,
+    "admission_col": 1
+  },
+  {
+    "gid": "696644819",
+    "grade": "Grade 2B",
+    "rows": 30,
+    "with_admission_number": 30,
+    "header_row": 0,
+    "admission_col": 1
+  },
+  {
+    "gid": "523098156",
+    "grade": "Grade 11C",
+    "rows": 4,
+    "with_admission_number": 4,
+    "header_row": 0,
+    "admission_col": 1
+  },
+  {
+    "gid": "255213929",
+    "grade": "Grade 11B",
+    "rows": 13,
+    "with_admission_number": 13,
+    "header_row": 0,
+    "admission_col": 1
+  },
+  {
+    "gid": "1291854348",
+    "grade": "Grade 11D",
+    "rows": 41,
+    "with_admission_number": 41,
+    "header_row": 0,
+    "admission_col": 1
+  }
+]

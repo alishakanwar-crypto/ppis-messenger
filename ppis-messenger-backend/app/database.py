@@ -494,6 +494,20 @@ def seed_erp_students_from_pi_sheet() -> int:
         logger.warning("ERP seed skipped: PI sheet JSON not found")
         return 0
 
+    roster_conn = get_db()
+    try:
+        roster_count = roster_conn.execute(
+            "SELECT COUNT(*) AS count FROM erp_students"
+        ).fetchone()["count"]
+    finally:
+        roster_conn.close()
+    if roster_count > 0:
+        logger.info(
+            "ERP roster already populated (%d students); skipping boot seed — use resync",
+            roster_count,
+        )
+        return 0
+
     with open(pi_path, encoding="utf-8") as file:
         records = json.load(file)
 
@@ -532,12 +546,16 @@ def seed_erp_students_from_pi_sheet() -> int:
             ).hexdigest()
             cursor = conn.execute(
                 """INSERT OR IGNORE INTO erp_students
-                   (full_name, grade, address, transport, source, source_key,
+                   (admission_number, full_name, grade, date_of_birth, gender,
+                    address, transport, source, source_key,
                     created_at, updated_at)
-                   VALUES (?, ?, ?, ?, 'pi_sheet', ?, ?, ?)""",
+                   VALUES (?, ?, ?, ?, ?, ?, ?, 'pi_sheet', ?, ?, ?)""",
                 (
+                    str(record.get("admission_number") or "").strip(),
                     full_name,
                     grade,
+                    str(record.get("dob") or record.get("date_of_birth") or "").strip(),
+                    str(record.get("gender") or "").strip(),
                     str(record.get("address") or "").strip(),
                     str(record.get("transport") or "").strip(),
                     source_key,
@@ -607,6 +625,387 @@ def seed_erp_students_from_pi_sheet() -> int:
         duplicate_records,
     )
     return imported
+
+
+def _roster_name(value: str) -> str:
+    return re.sub(r"[^A-Z0-9]", "", str(value or "").upper())
+
+
+def _record_parent_phones(record: dict) -> set[str]:
+    return {
+        phone
+        for phone in (
+            _normalize_phone(str(record.get("father_mobile") or "")),
+            _normalize_phone(str(record.get("mother_mobile") or "")),
+        )
+        if phone
+    }
+
+
+def _guardian_name_key(value: str) -> str:
+    return " ".join(str(value or "").casefold().split())
+
+
+def _student_guardian_snapshot(conn: sqlite3.Connection, student_id: int) -> dict:
+    rows = conn.execute(
+        """SELECT sg.relationship, g.full_name, g.phone
+           FROM erp_student_guardians sg
+           JOIN erp_guardians g ON g.id = sg.guardian_id
+           WHERE sg.student_id = ? ORDER BY sg.relationship""",
+        (student_id,),
+    ).fetchall()
+    snapshot = {}
+    for row in rows:
+        name = str(row["full_name"] or "").strip()
+        phone = _normalize_phone(str(row["phone"] or ""))
+        if not name and not phone:
+            continue
+        snapshot[row["relationship"]] = {
+            "full_name": _guardian_name_key(name),
+            "phone": phone,
+        }
+    return snapshot
+
+
+def _resync_record(record: dict) -> dict:
+    return {
+        "admission_number": str(record.get("admission_number") or "").strip(),
+        "full_name": str(
+            record.get("student_name") or record.get("student") or ""
+        ).strip(),
+        "grade": _normalize_grade(str(record.get("grade") or "").strip()),
+        "date_of_birth": str(
+            record.get("date_of_birth") or record.get("dob") or ""
+        ).strip(),
+        "gender": str(record.get("gender") or "").strip(),
+        "address": str(record.get("address") or "").strip(),
+        "transport": str(record.get("transport") or "").strip(),
+        "father_name": str(
+            record.get("father_name") or record.get("father") or ""
+        ).strip(),
+        "father_mobile": _normalize_phone(str(record.get("father_mobile") or "")),
+        "mother_name": str(
+            record.get("mother_name") or record.get("mother") or ""
+        ).strip(),
+        "mother_mobile": _normalize_phone(str(record.get("mother_mobile") or "")),
+    }
+
+
+def resync_erp_students_from_pi_sheet(
+    dry_run: bool,
+    withdraw: bool = False,
+) -> dict:
+    """Reconcile ERP students against the current PI roster.
+
+    This is intentionally not called from application startup.  A dry run
+    performs no database writes, including audit writes.
+    """
+    pi_path = Path(PI_SHEET_PATH)
+    if not pi_path.exists():
+        raise FileNotFoundError(f"PI sheet JSON not found: {pi_path}")
+    with open(pi_path, encoding="utf-8") as file:
+        live = [_resync_record(record) for record in json.load(file)]
+    live = [record for record in live if record["full_name"] and record["grade"]]
+
+    conn = get_db()
+    try:
+        erp_rows = conn.execute("SELECT * FROM erp_students").fetchall()
+        erp = [dict(row) for row in erp_rows]
+        live_by_admission: dict[str, list[dict]] = {}
+        live_by_name: dict[str, list[dict]] = {}
+        for row in live:
+            if row["admission_number"]:
+                live_by_admission.setdefault(row["admission_number"], []).append(row)
+            live_by_name.setdefault(_roster_name(row["full_name"]), []).append(row)
+
+        guardian_phones = {}
+        for row in erp:
+            guardian_phones[row["id"]] = {
+                x["phone"]
+                for x in conn.execute(
+                    """SELECT g.phone FROM erp_student_guardians sg
+                       JOIN erp_guardians g ON g.id = sg.guardian_id
+                       WHERE sg.student_id = ?""",
+                    (row["id"],),
+                ).fetchall()
+                if x["phone"]
+            }
+
+        matches: dict[int, dict] = {}
+        match_methods: dict[int, str] = {}
+        claimed_live: set[int] = set()
+
+        def claim(row, candidates, method):
+            candidates = [item for item in candidates if id(item) not in claimed_live]
+            if len(candidates) != 1:
+                return None
+            candidate = candidates[0]
+            matches[row["id"]] = candidate
+            match_methods[row["id"]] = method
+            claimed_live.add(id(candidate))
+            return candidate
+
+        # Stable identifiers first.
+        for row in erp:
+            if row["admission_number"]:
+                claim(row, live_by_admission.get(row["admission_number"], []), "admission_number")
+
+        # Parent phones intentionally ignore grade to handle promotions and
+        # stale grade nomenclature in the old ERP snapshot.
+        for row in erp:
+            if row["id"] in matches:
+                continue
+            phones = guardian_phones[row["id"]]
+            candidates = [
+                item for item in live_by_name.get(_roster_name(row["full_name"]), [])
+                if phones.intersection(_record_parent_phones(item))
+            ]
+            claim(row, candidates, "name_parent_phone")
+
+        # A unique normalized name is the final safe fallback. Multiple
+        # students with the same normalized name remain unmatched.
+        for row in erp:
+            if row["id"] in matches:
+                continue
+            claim(
+                row,
+                live_by_name.get(_roster_name(row["full_name"]), []),
+                "unique_name",
+            )
+
+        matched_live_ids = {id(candidate) for candidate in matches.values()}
+        method_counts = {
+            "admission_number": sum(
+                method == "admission_number" for method in match_methods.values()
+            ),
+            "name_parent_phone": sum(
+                method == "name_parent_phone" for method in match_methods.values()
+            ),
+            "unique_name": sum(
+                method == "unique_name" for method in match_methods.values()
+            ),
+        }
+        admission_backfill = {"unambiguous": 0, "ambiguous": 0, "unmatched": 0}
+        for row in erp:
+            if row["admission_number"]:
+                continue
+            candidate = matches.get(row["id"])
+            if candidate is not None and candidate["admission_number"]:
+                admission_backfill["unambiguous"] += 1
+            elif len([
+                item for item in live_by_name.get(_roster_name(row["full_name"]), [])
+                if id(item) not in claimed_live
+            ]) > 1:
+                admission_backfill["ambiguous"] += 1
+            else:
+                admission_backfill["unmatched"] += 1
+
+        summary = {
+            "matched_unchanged": 0,
+            "matched_updated": 0,
+            "grade_promotions": 0,
+            "other_field_changes": 0,
+            "new_inserts": 0,
+            "ambiguous_live": 0,
+            "not_in_current_sheet": 0,
+            "new_inserts_list": [],
+            "ambiguous_live_list": [],
+            "not_in_current_sheet_list": [],
+            "match_methods": method_counts,
+            "admission_backfill": admission_backfill,
+            "live_grades": sorted({_normalize_grade(row["grade"]) for row in live}),
+            "erp_grades_without_live_tab": [],
+        }
+        tabs_path = pi_path.with_name("live_pi_sheet_tabs.json")
+        if not tabs_path.exists():
+            bundled_tabs = Path(__file__).resolve().parent.parent / "pi_sheet_tabs.json"
+            tabs_path = bundled_tabs if bundled_tabs.exists() else tabs_path
+        if tabs_path.exists():
+            with open(tabs_path, encoding="utf-8") as tabs_file:
+                tab_rows = json.load(tabs_file)
+            live_tab_grades = sorted(
+                {_normalize_grade(str(row.get("grade") or "")) for row in tab_rows}
+                - {""}
+            )
+        else:
+            live_tab_grades = summary["live_grades"]
+        summary["live_tab_grades"] = live_tab_grades
+        summary["erp_grades_without_live_tab"] = sorted(
+            {
+                _normalize_grade(row["grade"])
+                for row in erp
+                if _normalize_grade(row["grade"]) not in live_tab_grades
+            }
+        )
+        now = _ist_now()
+        for row in erp:
+            candidate = matches.get(row["id"])
+            if candidate is None:
+                summary["not_in_current_sheet"] += 1
+                summary["not_in_current_sheet_list"].append(
+                    {
+                        "name": row["full_name"],
+                        "grade": row["grade"],
+                        "admission_number": row["admission_number"],
+                        "parent_phones": sorted(guardian_phones[row["id"]]),
+                    }
+                )
+                continue
+            before = {
+                "admission_number": row["admission_number"],
+                "grade": row["grade"],
+                "transport": row["transport"],
+                "gender": row["gender"],
+                "date_of_birth": row["date_of_birth"],
+                "address": row["address"],
+                "status": row["status"],
+                "guardians": _student_guardian_snapshot(conn, row["id"]),
+            }
+            expected_guardians = {
+                relationship: {
+                    "full_name": _guardian_name_key(name),
+                    "phone": _normalize_phone(phone),
+                }
+                for relationship, name, phone in (
+                    ("father", candidate["father_name"], candidate["father_mobile"]),
+                    ("mother", candidate["mother_name"], candidate["mother_mobile"]),
+                )
+                if name or _normalize_phone(phone)
+            }
+            after = {
+                "admission_number": candidate["admission_number"],
+                "grade": candidate["grade"],
+                "transport": candidate["transport"],
+                "gender": candidate["gender"],
+                "date_of_birth": candidate["date_of_birth"],
+                "address": candidate["address"],
+                "status": "active",
+                "guardians": expected_guardians,
+            }
+            changed = before != after
+            if not changed:
+                summary["matched_unchanged"] += 1
+                continue
+            summary["matched_updated"] += 1
+            if before["grade"] != after["grade"]:
+                summary["grade_promotions"] += 1
+            if any(before[field] != after[field] for field in (
+                "admission_number", "transport", "gender", "date_of_birth",
+                "address", "status", "guardians",
+            )):
+                summary["other_field_changes"] += 1
+            if not dry_run:
+                conn.execute(
+                    """UPDATE erp_students SET admission_number=?, grade=?,
+                       transport=?, gender=?, date_of_birth=?, address=?,
+                       status='active', updated_at=? WHERE id=?""",
+                    (
+                        candidate["admission_number"], candidate["grade"],
+                        candidate["transport"], candidate["gender"],
+                        candidate["date_of_birth"], candidate["address"],
+                        now, row["id"],
+                    ),
+                )
+                conn.execute(
+                    "DELETE FROM erp_student_guardians WHERE student_id = ?",
+                    (row["id"],),
+                )
+                primary = False
+                for name, phone, relationship in (
+                    (candidate["father_name"], candidate["father_mobile"], "father"),
+                    (candidate["mother_name"], candidate["mother_mobile"], "mother"),
+                ):
+                    if name or _normalize_phone(phone):
+                        _upsert_erp_guardian(
+                            conn, row["id"], name, phone, relationship,
+                            not primary, now,
+                        )
+                        primary = True
+                conn.execute(
+                    """INSERT INTO erp_audit_log
+                       (action, entity_type, entity_id, details, created_at)
+                       VALUES ('resync_update', 'student', ?, ?, ?)""",
+                    (row["id"], json.dumps({"before": before, "after": after}), now),
+                )
+
+        unmatched_erp_names = {
+            _roster_name(row["full_name"])
+            for row in erp
+            if row["id"] not in matches
+        }
+        for candidate in live:
+            if id(candidate) in matched_live_ids:
+                continue
+            if _roster_name(candidate["full_name"]) in unmatched_erp_names:
+                summary["ambiguous_live"] += 1
+                summary["ambiguous_live_list"].append(
+                    {"name": candidate["full_name"], "grade": candidate["grade"]}
+                )
+                continue
+            summary["new_inserts"] += 1
+            summary["new_inserts_list"].append(
+                {"name": candidate["full_name"], "grade": candidate["grade"]}
+            )
+            if not dry_run:
+                cursor = conn.execute(
+                    """INSERT INTO erp_students
+                       (admission_number, full_name, grade, date_of_birth, gender,
+                        address, transport, status, source, source_key,
+                        created_at, updated_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, 'active', 'pi_sheet', ?, ?, ?)""",
+                    (
+                        candidate["admission_number"], candidate["full_name"],
+                        candidate["grade"], candidate["date_of_birth"],
+                        candidate["gender"], candidate["address"],
+                        candidate["transport"],
+                        hashlib.sha256(
+                            json.dumps(candidate, sort_keys=True).encode()
+                        ).hexdigest(),
+                        now, now,
+                    ),
+                )
+                primary = False
+                for name, phone, relationship in (
+                    (candidate["father_name"], candidate["father_mobile"], "father"),
+                    (candidate["mother_name"], candidate["mother_mobile"], "mother"),
+                ):
+                    if name or _normalize_phone(phone):
+                        _upsert_erp_guardian(
+                            conn, cursor.lastrowid, name, phone, relationship,
+                            not primary, now,
+                        )
+                        primary = True
+                conn.execute(
+                    """INSERT INTO erp_audit_log
+                       (action, entity_type, entity_id, details, created_at)
+                       VALUES ('resync_insert', 'student', ?, ?, ?)""",
+                    (cursor.lastrowid, json.dumps({"after": candidate}), now),
+                )
+        if not dry_run:
+            if withdraw:
+                for row in erp:
+                    if row["id"] not in matches and row["status"] == "active":
+                        conn.execute(
+                            "UPDATE erp_students SET status='withdrawn', updated_at=? WHERE id=?",
+                            (now, row["id"]),
+                        )
+                        conn.execute(
+                            """INSERT INTO erp_audit_log
+                               (action, entity_type, entity_id, details, created_at)
+                               VALUES ('resync_withdraw', 'student', ?, ?, ?)""",
+                            (
+                                row["id"],
+                                json.dumps({
+                                    "before": {"status": row["status"], "grade": row["grade"]},
+                                    "after": {"status": "withdrawn"},
+                                }),
+                                now,
+                            ),
+                        )
+            conn.commit()
+        return summary
+    finally:
+        conn.close()
 
 
 def seed_school_data():
