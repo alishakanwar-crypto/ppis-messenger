@@ -1,15 +1,19 @@
 """SQLite database for PPIS Messenger."""
 
+import hashlib
 import json
 import logging
 import os
 import re
 import sqlite3
+from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import openpyxl
 
 logger = logging.getLogger(__name__)
+IST = ZoneInfo("Asia/Kolkata")
 
 DB_PATH = os.environ.get("DB_PATH", "/data/app.db")
 # Fallback for local dev
@@ -101,6 +105,63 @@ def init_db():
             uploaded_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             UNIQUE(student_name, grade)
         );
+
+        CREATE TABLE IF NOT EXISTS erp_students (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            admission_number TEXT NOT NULL DEFAULT '',
+            full_name TEXT NOT NULL,
+            grade TEXT NOT NULL,
+            date_of_birth TEXT NOT NULL DEFAULT '',
+            gender TEXT NOT NULL DEFAULT '',
+            address TEXT NOT NULL DEFAULT '',
+            transport TEXT NOT NULL DEFAULT '',
+            status TEXT NOT NULL DEFAULT 'active',
+            source TEXT NOT NULL DEFAULT 'manual',
+            source_key TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS erp_guardians (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            full_name TEXT NOT NULL DEFAULT '',
+            phone TEXT NOT NULL DEFAULT '',
+            email TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_erp_guardians_identity
+            ON erp_guardians(phone, full_name) WHERE phone != '';
+
+        CREATE TABLE IF NOT EXISTS erp_student_guardians (
+            student_id INTEGER NOT NULL REFERENCES erp_students(id) ON DELETE CASCADE,
+            guardian_id INTEGER NOT NULL REFERENCES erp_guardians(id) ON DELETE CASCADE,
+            relationship TEXT NOT NULL DEFAULT 'guardian',
+            is_primary INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (student_id, guardian_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS erp_audit_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            actor_user_id INTEGER REFERENCES users(id),
+            action TEXT NOT NULL,
+            entity_type TEXT NOT NULL,
+            entity_id INTEGER,
+            details TEXT NOT NULL DEFAULT '{}',
+            created_at TEXT NOT NULL
+        );
+
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_erp_students_admission
+            ON erp_students(admission_number) WHERE admission_number != '';
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_erp_students_source_key
+            ON erp_students(source_key) WHERE source_key != '';
+        CREATE INDEX IF NOT EXISTS idx_erp_students_grade
+            ON erp_students(grade);
+        CREATE INDEX IF NOT EXISTS idx_erp_students_status
+            ON erp_students(status);
+        CREATE INDEX IF NOT EXISTS idx_erp_audit_created
+            ON erp_audit_log(created_at);
 
         CREATE TABLE IF NOT EXISTS groups_ (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -368,6 +429,184 @@ def _normalize_grade(grade: str) -> str:
         return f"Grade {num}{section}" if section else f"Grade {num}"
 
     return g
+
+
+def _ist_now() -> str:
+    return datetime.now(IST).isoformat(timespec="seconds")
+
+
+def _upsert_erp_guardian(
+    conn: sqlite3.Connection,
+    student_id: int,
+    name: str,
+    phone: str,
+    relationship: str,
+    is_primary: bool,
+    now: str,
+) -> None:
+    normalized_phone = _normalize_phone(phone)
+    guardian = None
+    if normalized_phone:
+        guardian = conn.execute(
+            """SELECT id FROM erp_guardians
+               WHERE phone = ? AND lower(full_name) = lower(?)""",
+            (normalized_phone, name),
+        ).fetchone()
+    elif name:
+        guardian = conn.execute(
+            """SELECT g.id FROM erp_guardians g
+               JOIN erp_student_guardians sg ON sg.guardian_id = g.id
+               WHERE sg.student_id = ? AND sg.relationship = ?
+                 AND lower(g.full_name) = lower(?)""",
+            (student_id, relationship, name),
+        ).fetchone()
+
+    if guardian:
+        guardian_id = guardian["id"]
+        conn.execute(
+            """UPDATE erp_guardians
+               SET full_name = CASE WHEN full_name = '' THEN ? ELSE full_name END,
+                   updated_at = ?
+               WHERE id = ?""",
+            (name, now, guardian_id),
+        )
+    else:
+        cursor = conn.execute(
+            """INSERT INTO erp_guardians
+               (full_name, phone, created_at, updated_at)
+               VALUES (?, ?, ?, ?)""",
+            (name, normalized_phone, now, now),
+        )
+        guardian_id = cursor.lastrowid
+
+    conn.execute(
+        """INSERT OR IGNORE INTO erp_student_guardians
+           (student_id, guardian_id, relationship, is_primary)
+           VALUES (?, ?, ?, ?)""",
+        (student_id, guardian_id, relationship, int(is_primary)),
+    )
+
+
+def seed_erp_students_from_pi_sheet() -> int:
+    """Import the existing PI roster into the normalized ERP student directory."""
+    pi_path = Path(PI_SHEET_PATH)
+    if not pi_path.exists():
+        logger.warning("ERP seed skipped: PI sheet JSON not found")
+        return 0
+
+    with open(pi_path, encoding="utf-8") as file:
+        records = json.load(file)
+
+    conn = get_db()
+    imported = 0
+    duplicate_records = 0
+    now = _ist_now()
+    try:
+        for record in records:
+            full_name = str(
+                record.get("student_name") or record.get("student") or ""
+            ).strip()
+            grade = _normalize_grade(str(record.get("grade") or "").strip())
+            if not full_name or not grade:
+                continue
+
+            source_values = {
+                "student": full_name.casefold(),
+                "grade": grade.casefold(),
+                "father": str(record.get("father_name") or record.get("father") or "")
+                .strip()
+                .casefold(),
+                "father_mobile": _normalize_phone(
+                    str(record.get("father_mobile") or "")
+                ),
+                "mother": str(record.get("mother_name") or record.get("mother") or "")
+                .strip()
+                .casefold(),
+                "mother_mobile": _normalize_phone(
+                    str(record.get("mother_mobile") or "")
+                ),
+                "address": str(record.get("address") or "").strip().casefold(),
+            }
+            source_key = hashlib.sha256(
+                json.dumps(source_values, sort_keys=True).encode("utf-8")
+            ).hexdigest()
+            cursor = conn.execute(
+                """INSERT OR IGNORE INTO erp_students
+                   (full_name, grade, address, transport, source, source_key,
+                    created_at, updated_at)
+                   VALUES (?, ?, ?, ?, 'pi_sheet', ?, ?, ?)""",
+                (
+                    full_name,
+                    grade,
+                    str(record.get("address") or "").strip(),
+                    str(record.get("transport") or "").strip(),
+                    source_key,
+                    now,
+                    now,
+                ),
+            )
+            imported += cursor.rowcount
+            duplicate_records += int(cursor.rowcount == 0)
+            student = conn.execute(
+                "SELECT id FROM erp_students WHERE source_key = ?",
+                (source_key,),
+            ).fetchone()
+            if not student:
+                continue
+
+            guardians = [
+                (
+                    str(record.get("father_name") or record.get("father") or "").strip(),
+                    str(record.get("father_mobile") or "").strip(),
+                    "father",
+                ),
+                (
+                    str(record.get("mother_name") or record.get("mother") or "").strip(),
+                    str(record.get("mother_mobile") or "").strip(),
+                    "mother",
+                ),
+            ]
+            primary_assigned = False
+            for name, phone, relationship in guardians:
+                if not name and not _normalize_phone(phone):
+                    continue
+                _upsert_erp_guardian(
+                    conn,
+                    student["id"],
+                    name,
+                    phone,
+                    relationship,
+                    not primary_assigned,
+                    now,
+                )
+                primary_assigned = True
+
+        if imported:
+            conn.execute(
+                """INSERT INTO erp_audit_log
+                   (action, entity_type, details, created_at)
+                   VALUES ('import', 'student_roster', ?, ?)""",
+                (
+                    json.dumps(
+                        {
+                            "source": "pi_sheet",
+                            "imported": imported,
+                            "exact_duplicates": duplicate_records,
+                        }
+                    ),
+                    now,
+                ),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+    logger.info(
+        "ERP student directory seeded with %d new student(s); %d exact duplicate(s)",
+        imported,
+        duplicate_records,
+    )
+    return imported
 
 
 def seed_school_data():

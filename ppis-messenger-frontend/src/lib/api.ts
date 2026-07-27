@@ -187,3 +187,50 @@ export async function deleteStudentPhoto(photoId: number) {
 export function getStudentPhotoUrl(photoId: number): string {
   return `${API_URL}/api/admin/student-photo-image/${photoId}`;
 }
+
+// ERP
+export async function getErpOverview() {
+  return apiCall("/api/erp/overview");
+}
+
+export async function getErpStudents(params: {
+  search?: string;
+  grade?: string;
+  status?: string;
+  page?: number;
+  limit?: number;
+} = {}) {
+  const qs = new URLSearchParams();
+  if (params.search) qs.set("search", params.search);
+  if (params.grade) qs.set("grade", params.grade);
+  if (params.status) qs.set("status", params.status);
+  if (params.page) qs.set("page", String(params.page));
+  if (params.limit) qs.set("limit", String(params.limit));
+  return apiCall(`/api/erp/students?${qs.toString()}`);
+}
+
+export async function getErpStudent(studentId: number) {
+  return apiCall(`/api/erp/students/${studentId}`);
+}
+
+export async function createErpStudent(student: {
+  admission_number?: string;
+  full_name: string;
+  grade: string;
+  date_of_birth?: string;
+  gender?: string;
+  address?: string;
+  transport?: string;
+  status?: string;
+  guardians?: Array<{
+    full_name: string;
+    phone?: string;
+    relationship?: string;
+    is_primary?: boolean;
+  }>;
+}) {
+  return apiCall("/api/erp/students", {
+    method: "POST",
+    body: JSON.stringify(student),
+  });
+}

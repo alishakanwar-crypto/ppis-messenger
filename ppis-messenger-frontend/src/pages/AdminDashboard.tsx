@@ -240,6 +240,12 @@ export default function AdminDashboard() {
           </button>
           <h1 className="text-lg font-bold">Admin Dashboard</h1>
         </div>
+        <button
+          onClick={() => navigate("/erp")}
+          className="rounded-lg bg-white/15 px-3 py-1.5 text-sm font-semibold transition hover:bg-white/25"
+        >
+          Open ERP
+        </button>
       </div>
 
       {/* Tabs */}
