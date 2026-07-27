@@ -1,6 +1,7 @@
 """Authentication routes — phone + PIN based login."""
 
 import hashlib
+import hmac
 import json
 import logging
 import os
@@ -18,9 +19,16 @@ from app.database import get_db, ADMIN_NUMBERS
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-JWT_SECRET = os.environ.get("JWT_SECRET", "ppis-messenger-secret-2026")
+JWT_SECRET = os.environ.get("JWT_SECRET") or secrets.token_urlsafe(48)
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRE_DAYS = 90
+DEMO_OTP_ENABLED = os.environ.get("DEMO_OTP_ENABLED", "false").lower() == "true"
+PIN_MIN_LENGTH = int(os.environ.get("PIN_MIN_LENGTH", "8"))
+ADMIN_BOOTSTRAP_PHONE = os.environ.get("ADMIN_BOOTSTRAP_PHONE", "")
+ADMIN_BOOTSTRAP_PIN = os.environ.get("ADMIN_BOOTSTRAP_PIN", "")
+LOGIN_MAX_FAILURES = int(os.environ.get("LOGIN_MAX_FAILURES", "5"))
+LOGIN_WINDOW_SECONDS = int(os.environ.get("LOGIN_WINDOW_SECONDS", "900"))
+_failed_pin_attempts: dict[str, list[float]] = {}
 
 
 # ---- Models ----
@@ -93,7 +101,71 @@ def _normalize_phone(phone: str) -> str:
 
 
 def _hash_pin(pin: str) -> str:
-    return hashlib.sha256(pin.encode()).hexdigest()
+    salt = secrets.token_bytes(16)
+    digest = hashlib.scrypt(pin.encode(), salt=salt, n=2**14, r=8, p=1)
+    return f"scrypt${salt.hex()}${digest.hex()}"
+
+
+def _verify_pin(pin: str, pin_hash: str) -> bool:
+    if pin_hash.startswith("scrypt$"):
+        try:
+            _, salt_hex, digest_hex = pin_hash.split("$", 2)
+            digest = hashlib.scrypt(
+                pin.encode(), salt=bytes.fromhex(salt_hex), n=2**14, r=8, p=1
+            )
+            return hmac.compare_digest(digest.hex(), digest_hex)
+        except (ValueError, TypeError):
+            return False
+    return hmac.compare_digest(pin_hash, hashlib.sha256(pin.encode()).hexdigest())
+
+
+def _recent_pin_failures(phone: str) -> list[float]:
+    cutoff = time.monotonic() - LOGIN_WINDOW_SECONDS
+    recent = [
+        attempt
+        for attempt in _failed_pin_attempts.get(phone, [])
+        if attempt > cutoff
+    ]
+    if recent:
+        _failed_pin_attempts[phone] = recent
+    else:
+        _failed_pin_attempts.pop(phone, None)
+    return recent
+
+
+def _record_pin_failure(phone: str) -> None:
+    attempts = _recent_pin_failures(phone)
+    attempts.append(time.monotonic())
+    _failed_pin_attempts[phone] = attempts
+
+
+def bootstrap_admin_pin() -> None:
+    if not ADMIN_BOOTSTRAP_PHONE and not ADMIN_BOOTSTRAP_PIN:
+        return
+    if not ADMIN_BOOTSTRAP_PHONE or not ADMIN_BOOTSTRAP_PIN:
+        raise RuntimeError(
+            "Both ADMIN_BOOTSTRAP_PHONE and ADMIN_BOOTSTRAP_PIN are required"
+        )
+    if len(ADMIN_BOOTSTRAP_PIN) < PIN_MIN_LENGTH:
+        raise RuntimeError(
+            f"ADMIN_BOOTSTRAP_PIN must be at least {PIN_MIN_LENGTH} characters"
+        )
+
+    phone = _normalize_phone(ADMIN_BOOTSTRAP_PHONE)
+    conn = get_db()
+    user = conn.execute(
+        "SELECT id, role FROM users WHERE phone = ?", (phone,)
+    ).fetchone()
+    if not user or user["role"] != "admin":
+        conn.close()
+        raise RuntimeError("ADMIN_BOOTSTRAP_PHONE must belong to a seeded admin")
+    conn.execute(
+        "UPDATE users SET pin_hash = ? WHERE id = ?",
+        (_hash_pin(ADMIN_BOOTSTRAP_PIN), user["id"]),
+    )
+    conn.commit()
+    conn.close()
+    logger.info("Admin passcode configured for production login")
 
 
 def create_token(user_id: int, role: str, phone: str) -> str:
@@ -131,7 +203,9 @@ def require_admin(user: dict = Depends(get_current_user)) -> dict:
 
 @router.post("/request-otp")
 async def request_otp(body: PhoneRequest):
-    """Send OTP to a phone number. For now, returns the OTP directly (demo mode)."""
+    """Create a local-development OTP when demo mode is explicitly enabled."""
+    if not DEMO_OTP_ENABLED:
+        raise HTTPException(status_code=404, detail="OTP login is disabled")
     phone = _normalize_phone(body.phone)
     if not phone or len(phone) < 10:
         raise HTTPException(status_code=400, detail="Invalid phone number")
@@ -147,14 +221,14 @@ async def request_otp(body: PhoneRequest):
     conn.commit()
     conn.close()
 
-    logger.info(f"OTP for {phone}: {code}")
-    # In production, send OTP via SMS. For now, return it.
-    return {"success": True, "message": "OTP sent", "otp_preview": code}
+    return {"success": True, "message": "Demo OTP created", "otp_preview": code}
 
 
 @router.post("/verify-otp")
 async def verify_otp(body: VerifyOTPRequest):
-    """Verify OTP and return JWT token. Auto-registers new users."""
+    """Verify a local-development OTP and return a JWT token."""
+    if not DEMO_OTP_ENABLED:
+        raise HTTPException(status_code=404, detail="OTP login is disabled")
     phone = _normalize_phone(body.phone)
     conn = get_db()
 
@@ -202,9 +276,12 @@ async def verify_otp(body: VerifyOTPRequest):
 
 @router.post("/set-pin")
 async def set_pin(body: SetPinRequest, user: dict = Depends(get_current_user)):
-    """Set a 4-digit PIN for quick login."""
-    if len(body.pin) < 4:
-        raise HTTPException(status_code=400, detail="PIN must be at least 4 digits")
+    """Set a passcode for phone-based login."""
+    if len(body.pin) < PIN_MIN_LENGTH:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Passcode must be at least {PIN_MIN_LENGTH} characters",
+        )
     conn = get_db()
     conn.execute(
         "UPDATE users SET pin_hash = ? WHERE id = ?",
@@ -217,17 +294,26 @@ async def set_pin(body: SetPinRequest, user: dict = Depends(get_current_user)):
 
 @router.post("/login-pin")
 async def login_pin(body: LoginPinRequest):
-    """Login with phone + PIN (quick login)."""
+    """Login with phone and a throttled passcode check."""
     phone = _normalize_phone(body.phone)
+    if len(_recent_pin_failures(phone)) >= LOGIN_MAX_FAILURES:
+        raise HTTPException(
+            status_code=429,
+            detail="Too many failed attempts. Try again later.",
+        )
+
     conn = get_db()
     user = conn.execute("SELECT * FROM users WHERE phone = ?", (phone,)).fetchone()
-    if not user or not user["pin_hash"]:
+    if (
+        not user
+        or not user["pin_hash"]
+        or not _verify_pin(body.pin, user["pin_hash"])
+    ):
         conn.close()
-        raise HTTPException(status_code=400, detail="No PIN set. Use OTP login.")
-    if user["pin_hash"] != _hash_pin(body.pin):
-        conn.close()
-        raise HTTPException(status_code=400, detail="Invalid PIN")
+        _record_pin_failure(phone)
+        raise HTTPException(status_code=400, detail="Invalid phone or passcode")
 
+    _failed_pin_attempts.pop(phone, None)
     conn.execute(
         "UPDATE users SET last_seen = CURRENT_TIMESTAMP WHERE id = ?", (user["id"],)
     )
