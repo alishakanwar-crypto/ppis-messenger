@@ -280,17 +280,17 @@ def invoice_payload(conn, iid):
 async def generate(body:GenerateIn,idempotency_key:str=Header(...,alias="Idempotency-Key"),user=Depends(require_admin)):
     conn=get_db()
     try:
-        # Idempotency is represented by the first invoice key; repeated runs report existing.
-        existing=conn.execute("SELECT id FROM erp_invoices WHERE idempotency_key=?",(idempotency_key,)).fetchall()
-        if existing: return {"created":[],"skipped_existing":len(existing),"invoices":[invoice_payload(conn,x["id"]) for x in existing]}
         params=[body.session_id]; where="s.status='active' AND p.session_id=?"
         if body.grade: where+=" AND s.grade=?"; params.append(body.grade)
         if body.student_ids: where+=" AND s.id IN ("+",".join("?"*len(body.student_ids))+")"; params.extend(body.student_ids)
         rows=conn.execute("SELECT s.id,s.grade,p.structure_id FROM erp_students s JOIN erp_student_fee_plans p ON p.student_id=s.id WHERE "+where,params).fetchall()
-        created=[]; skipped=0
+        created=[]; batch_existing=[]; skipped=0
         for student in rows:
             old=conn.execute("SELECT id FROM erp_invoices WHERE student_id=? AND session_id=? AND period_code=? AND status!='cancelled'",(student["id"],body.session_id,body.period_code)).fetchone()
-            if old: skipped+=1; continue
+            if old:
+                skipped+=1
+                if not body.dry_run: batch_existing.append(invoice_payload(conn,old["id"]))
+                continue
             items=conn.execute("SELECT i.*,h.name FROM erp_fee_structure_items i JOIN erp_fee_heads h ON h.id=i.fee_head_id WHERE structure_id=?",(student["structure_id"],)).fetchall()
             gross=sum(x["amount_paise"] for x in items)
             concessions=conn.execute("SELECT * FROM erp_concessions WHERE student_id=? AND session_id=? AND status='active'",(student["id"],body.session_id)).fetchall()
@@ -305,10 +305,10 @@ async def generate(body:GenerateIn,idempotency_key:str=Header(...,alias="Idempot
             if body.dry_run: created.append({"student_id":student["id"],"gross_paise":gross,"concession_paise":total_con,"net_paise":gross-total_con}); continue
             n=counter(conn,"invoice"); sname=session_row(conn,body.session_id)["name"]; number=f"PPIS/{sname}/{n:06d}"; now=_ist_now()
             due=(date.fromisoformat(now[:10])+timedelta(days=15)).isoformat()
-            cur=conn.execute("INSERT INTO erp_invoices(invoice_number,student_id,session_id,period_code,issue_date,due_date,gross_paise,concession_paise,net_paise,status,idempotency_key,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",(number,student["id"],body.session_id,body.period_code,now[:10],due,gross,total_con,gross-total_con,"issued",idempotency_key if not created else None,now,now))
+            cur=conn.execute("INSERT INTO erp_invoices(invoice_number,student_id,session_id,period_code,issue_date,due_date,gross_paise,concession_paise,net_paise,status,idempotency_key,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",(number,student["id"],body.session_id,body.period_code,now[:10],due,gross,total_con,gross-total_con,"issued",None,now,now))
             for line in lines: conn.execute("INSERT INTO erp_invoice_lines(invoice_id,fee_head_id,description,amount_paise,concession_paise,concession_id) VALUES(?,?,?,?,?,?)",(cur.lastrowid,*line))
             audit(conn,user["user_id"],"generate","invoice",cur.lastrowid,{"period_code":body.period_code}); created.append(invoice_payload(conn,cur.lastrowid))
-        conn.commit(); return {"created":created,"skipped_existing":skipped,"invoices":created}
+        conn.commit(); return {"created":created,"skipped_existing":skipped,"invoices":created+batch_existing}
     finally: conn.close()
 
 
@@ -452,6 +452,9 @@ async def dues(session_id:int,grade:str="",min_days_overdue:int=0,user=Depends(r
     conn=get_db()
     try:
         extra=" AND s.grade=?" if grade else ""; p=[session_id,*([grade] if grade else [])]
+        if min_days_overdue > 0:
+            extra += " AND i.due_date <= ?"
+            p.append((date.fromisoformat(_ist_now()[:10]) - timedelta(days=min_days_overdue)).isoformat())
         return {"dues":[dict(x) for x in conn.execute("SELECT i.*,s.full_name,s.grade FROM erp_invoices i JOIN erp_students s ON s.id=i.student_id WHERE i.session_id=? AND i.status IN ('issued','partially_paid') AND i.net_paise>i.paid_paise"+extra,p)]}
     finally: conn.close()
 

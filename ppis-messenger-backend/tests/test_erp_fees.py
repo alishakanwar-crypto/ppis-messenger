@@ -126,6 +126,12 @@ class ErpFeesSmokeTests(unittest.TestCase):
         )
         self.assertEqual(dues_before.status_code, 200)
         self.assertIn(first_invoice["id"], [invoice["id"] for invoice in dues_before.json()["dues"]])
+        overdue_cutoff = self.client.get(
+            f"/api/erp/fees/dues?session_id={session['id']}&grade=Grade%204A&min_days_overdue=30",
+            headers=self.admin,
+        )
+        self.assertEqual(overdue_cutoff.status_code, 200)
+        self.assertNotIn(first_invoice["id"], [invoice["id"] for invoice in overdue_cutoff.json()["dues"]])
 
         payment_response = self.client.post(
             "/api/erp/payments",
@@ -174,6 +180,7 @@ class ErpFeesSmokeTests(unittest.TestCase):
         repeated = repeat_response.json()
         self.assertEqual(repeated["created"], [])
         self.assertEqual(repeated["skipped_existing"], 2)
+        self.assertEqual(len(repeated["invoices"]), 2)
 
 
 if __name__ == "__main__":
