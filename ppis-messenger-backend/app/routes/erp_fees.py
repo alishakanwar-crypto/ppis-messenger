@@ -1,7 +1,8 @@
 """Admin-only ERP fees and payments."""
+# ruff: noqa: E701, E702
 import json
 import sqlite3
-from datetime import datetime, date, timedelta
+from datetime import date, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
@@ -19,7 +20,6 @@ def audit(conn, user_id, action, entity_type, entity_id, details=None):
 
 
 def counter(conn, scope):
-    conn.execute("BEGIN IMMEDIATE")
     row = conn.execute("SELECT next_value FROM erp_document_counters WHERE scope=?", (scope,)).fetchone()
     if row is None:
         conn.execute("INSERT INTO erp_document_counters(scope,next_value) VALUES (?,2)", (scope,))

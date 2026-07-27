@@ -44,6 +44,94 @@ class ErpFeesSmokeTests(unittest.TestCase):
         })
         self.assertEqual(response.status_code, 422)
 
+    def test_batch_invoice_generation_uses_sequential_numbers_and_is_idempotent(self):
+        db = database.get_db()
+        now = database._ist_now()
+        session = db.execute(
+            "SELECT id FROM erp_academic_sessions WHERE is_current = 1"
+        ).fetchone()
+        fee_head = db.execute(
+            "SELECT id FROM erp_fee_heads WHERE code = 'TUITION'"
+        ).fetchone()
+        student_ids = []
+        for name in ("Batch Student One", "Batch Student Two"):
+            student_ids.append(
+                db.execute(
+                    """INSERT INTO erp_students
+                       (full_name, grade, status, source, created_at, updated_at)
+                       VALUES (?, 'Grade 4A', 'active', 'test', ?, ?)""",
+                    (name, now, now),
+                ).lastrowid
+            )
+        db.commit()
+        db.close()
+
+        structure_response = self.client.post(
+            "/api/erp/fee-structures",
+            headers=self.admin,
+            json={
+                "session_id": session["id"],
+                "grade": "Grade 4A",
+                "frequency": "monthly",
+                "items": [{"fee_head_id": fee_head["id"], "amount_paise": 12500}],
+            },
+        )
+        self.assertEqual(structure_response.status_code, 201)
+        structure = structure_response.json()
+        publish_response = self.client.post(
+            f"/api/erp/fee-structures/{structure['id']}/publish",
+            headers=self.admin,
+        )
+        self.assertEqual(publish_response.status_code, 200)
+
+        for student_id in student_ids:
+            plan_response = self.client.post(
+                f"/api/erp/students/{student_id}/fee-plan",
+                headers=self.admin,
+                json={
+                    "session_id": session["id"],
+                    "structure_id": structure["id"],
+                },
+            )
+            self.assertEqual(plan_response.status_code, 200)
+
+        generate_response = self.client.post(
+            "/api/erp/invoices/generate",
+            headers={**self.admin, "Idempotency-Key": "batch-invoice-test"},
+            json={
+                "session_id": session["id"],
+                "period_code": "2026-04",
+                "grade": "Grade 4A",
+            },
+        )
+        self.assertEqual(generate_response.status_code, 200)
+        generated = generate_response.json()
+        self.assertEqual(len(generated["created"]), 2)
+        invoice_numbers = [invoice["invoice_number"] for invoice in generated["created"]]
+        self.assertEqual(invoice_numbers, ["PPIS/2026-27/000001", "PPIS/2026-27/000002"])
+        for invoice in generated["created"]:
+            self.assertIsInstance(invoice["gross_paise"], int)
+            self.assertIsInstance(invoice["concession_paise"], int)
+            self.assertIsInstance(invoice["net_paise"], int)
+            self.assertEqual(
+                invoice["net_paise"],
+                invoice["gross_paise"] - invoice["concession_paise"],
+            )
+
+        repeat_response = self.client.post(
+            "/api/erp/invoices/generate",
+            headers={**self.admin, "Idempotency-Key": "different-batch-key"},
+            json={
+                "session_id": session["id"],
+                "period_code": "2026-04",
+                "grade": "Grade 4A",
+            },
+        )
+        self.assertEqual(repeat_response.status_code, 200)
+        repeated = repeat_response.json()
+        self.assertEqual(repeated["created"], [])
+        self.assertEqual(repeated["skipped_existing"], 2)
+
 
 if __name__ == "__main__":
     unittest.main()
