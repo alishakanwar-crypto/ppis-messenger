@@ -6,8 +6,11 @@ import StudentAvatar from "../components/StudentAvatar";
 
 type Step = "phone" | "otp" | "pin" | "success";
 
+const PIN_ONLY_AUTH = import.meta.env.VITE_PIN_ONLY_AUTH === "true";
+const PIN_MIN_LENGTH = Number(import.meta.env.VITE_PIN_MIN_LENGTH || "8");
+
 export default function Login() {
-  const [step, setStep] = useState<Step>("phone");
+  const [step, setStep] = useState<Step>(PIN_ONLY_AUTH ? "pin" : "phone");
   const [phone, setPhone] = useState("");
   const [otp, setOtp] = useState("");
   const [pin, setPin] = useState("");
@@ -72,7 +75,7 @@ export default function Login() {
         navigate("/");
       }
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Invalid PIN");
+      setError(e instanceof Error ? e.message : "Invalid phone or passcode");
     } finally {
       setLoading(false);
     }
@@ -221,30 +224,32 @@ export default function Login() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Enter PIN</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Admin passcode</label>
               <input
                 type="password"
                 value={pin}
                 onChange={(e) => setPin(e.target.value)}
-                placeholder="4-digit PIN"
-                maxLength={4}
+                placeholder={`${PIN_MIN_LENGTH}–12 characters`}
+                maxLength={12}
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-center text-2xl tracking-widest"
                 autoFocus
               />
             </div>
             <button
               onClick={handlePinLogin}
-              disabled={loading || pin.length < 4 || phone.length < 10}
+              disabled={loading || pin.length < PIN_MIN_LENGTH || phone.length < 10}
               className="w-full py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
             >
-              {loading ? "Logging in..." : "Login with PIN"}
+              {loading ? "Logging in..." : "Secure login"}
             </button>
-            <button
-              onClick={() => { setStep("phone"); setPin(""); }}
-              className="w-full text-sm text-gray-500 hover:underline"
-            >
-              Login with OTP instead
-            </button>
+            {!PIN_ONLY_AUTH && (
+              <button
+                onClick={() => { setStep("phone"); setPin(""); }}
+                className="w-full text-sm text-gray-500 hover:underline"
+              >
+                Login with OTP instead
+              </button>
+            )}
           </div>
         )}
       </div>

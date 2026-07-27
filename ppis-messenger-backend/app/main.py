@@ -15,6 +15,7 @@ async def lifespan(application: FastAPI):
     init_db()
     seed_school_data()
     seed_erp_students_from_pi_sheet()
+    auth.bootstrap_admin_pin()
     logger.info("PPIS Messenger backend started")
     yield
 
