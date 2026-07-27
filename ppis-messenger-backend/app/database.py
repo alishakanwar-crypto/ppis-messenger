@@ -642,6 +642,10 @@ def _record_parent_phones(record: dict) -> set[str]:
     }
 
 
+def _guardian_name_key(value: str) -> str:
+    return " ".join(str(value or "").casefold().split())
+
+
 def _student_guardian_snapshot(conn: sqlite3.Connection, student_id: int) -> dict:
     rows = conn.execute(
         """SELECT sg.relationship, g.full_name, g.phone
@@ -650,13 +654,17 @@ def _student_guardian_snapshot(conn: sqlite3.Connection, student_id: int) -> dic
            WHERE sg.student_id = ? ORDER BY sg.relationship""",
         (student_id,),
     ).fetchall()
-    return {
-        row["relationship"]: {
-            "full_name": row["full_name"],
-            "phone": row["phone"],
+    snapshot = {}
+    for row in rows:
+        name = str(row["full_name"] or "").strip()
+        phone = _normalize_phone(str(row["phone"] or ""))
+        if not name and not phone:
+            continue
+        snapshot[row["relationship"]] = {
+            "full_name": _guardian_name_key(name),
+            "phone": phone,
         }
-        for row in rows
-    }
+    return snapshot
 
 
 def _resync_record(record: dict) -> dict:
@@ -854,12 +862,15 @@ def resync_erp_students_from_pi_sheet(
                 "guardians": _student_guardian_snapshot(conn, row["id"]),
             }
             expected_guardians = {
-                relationship: {"full_name": name, "phone": phone}
+                relationship: {
+                    "full_name": _guardian_name_key(name),
+                    "phone": _normalize_phone(phone),
+                }
                 for relationship, name, phone in (
                     ("father", candidate["father_name"], candidate["father_mobile"]),
                     ("mother", candidate["mother_name"], candidate["mother_mobile"]),
                 )
-                if name or phone
+                if name or _normalize_phone(phone)
             }
             after = {
                 "admission_number": candidate["admission_number"],
@@ -904,7 +915,7 @@ def resync_erp_students_from_pi_sheet(
                     (candidate["father_name"], candidate["father_mobile"], "father"),
                     (candidate["mother_name"], candidate["mother_mobile"], "mother"),
                 ):
-                    if name or phone:
+                    if name or _normalize_phone(phone):
                         _upsert_erp_guardian(
                             conn, row["id"], name, phone, relationship,
                             not primary, now,
@@ -953,6 +964,17 @@ def resync_erp_students_from_pi_sheet(
                         now, now,
                     ),
                 )
+                primary = False
+                for name, phone, relationship in (
+                    (candidate["father_name"], candidate["father_mobile"], "father"),
+                    (candidate["mother_name"], candidate["mother_mobile"], "mother"),
+                ):
+                    if name or _normalize_phone(phone):
+                        _upsert_erp_guardian(
+                            conn, cursor.lastrowid, name, phone, relationship,
+                            not primary, now,
+                        )
+                        primary = True
                 conn.execute(
                     """INSERT INTO erp_audit_log
                        (action, entity_type, entity_id, details, created_at)

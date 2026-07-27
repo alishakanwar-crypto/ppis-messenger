@@ -25,7 +25,7 @@ class ErpRosterResyncTests(unittest.TestCase):
         )
         guardian = conn.execute(
             "INSERT INTO erp_guardians(full_name,phone,created_at,updated_at) VALUES (?,?,?,?)",
-            ("Alice Father", "9000000001", now, now),
+            ("ALICE FATHER", "9000000001", now, now),
         ).lastrowid
         conn.execute(
             "INSERT INTO erp_student_guardians(student_id,guardian_id,relationship,is_primary) VALUES (1,?,?,1)",
@@ -62,6 +62,8 @@ class ErpRosterResyncTests(unittest.TestCase):
                     {
                         "student": "New Example", "admission_number": "NEW-4",
                         "grade": "Grade 4A", "transport": "Self",
+                        "father": "New Father", "father_mobile": "919000000004",
+                        "mother": "New Mother", "mother_mobile": "91 9000000005",
                     },
                 ]
             ),
@@ -101,9 +103,24 @@ class ErpRosterResyncTests(unittest.TestCase):
         self.assertIsNotNone(
             conn.execute("SELECT id FROM erp_students WHERE full_name='New Example'").fetchone()
         )
+        guardians = conn.execute(
+            """SELECT g.full_name, g.phone, sg.relationship
+               FROM erp_student_guardians sg
+               JOIN erp_guardians g ON g.id = sg.guardian_id
+               JOIN erp_students s ON s.id = sg.student_id
+               WHERE s.full_name = 'New Example'
+               ORDER BY sg.relationship"""
+        ).fetchall()
+        self.assertEqual(
+            [(row["full_name"], row["phone"], row["relationship"]) for row in guardians],
+            [
+                ("New Father", "9000000004", "father"),
+                ("New Mother", "9000000005", "mother"),
+            ],
+        )
         audits = conn.execute("SELECT COUNT(*) FROM erp_audit_log").fetchone()[0]
         conn.close()
-        second = database.resync_erp_students_from_pi_sheet(dry_run=False)
+        second = database.resync_erp_students_from_pi_sheet(dry_run=True)
         self.assertEqual(second["matched_updated"], 0)
         self.assertEqual(second["new_inserts"], 0)
         self.assertEqual(second["not_in_current_sheet"], 1)
