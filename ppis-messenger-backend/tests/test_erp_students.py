@@ -74,6 +74,48 @@ class ErpStudentTests(unittest.TestCase):
         self.assertEqual(students.json()["total"], 1)
         self.assertEqual(students.json()["students"][0]["full_name"], "Aarav Test")
 
+    def test_boot_seed_is_noop_when_roster_already_has_rows(self):
+        conn = database.get_db()
+        before = conn.execute("SELECT COUNT(*) FROM erp_students").fetchone()[0]
+        conn.close()
+        with open(database.PI_SHEET_PATH, encoding="utf-8") as file:
+            records = json.load(file)
+        records.append({"student": "Should Not Be Inserted", "grade": "Grade 1A"})
+        Path(database.PI_SHEET_PATH).write_text(json.dumps(records), encoding="utf-8")
+
+        self.assertEqual(database.seed_erp_students_from_pi_sheet(), 0)
+        conn = database.get_db()
+        self.assertEqual(conn.execute("SELECT COUNT(*) FROM erp_students").fetchone()[0], before)
+        self.assertIsNone(
+            conn.execute(
+                "SELECT id FROM erp_students WHERE full_name = ?",
+                ("Should Not Be Inserted",),
+            ).fetchone()
+        )
+        conn.close()
+
+    def test_resync_endpoint_is_admin_only_and_returns_summary(self):
+        response = self.client.post(
+            "/api/erp/students/resync",
+            headers=self.headers,
+        )
+        self.assertEqual(response.status_code, 200)
+        summary = response.json()
+        self.assertIn("matched_updated", summary)
+        self.assertIn("new_inserts", summary)
+
+        conn = database.get_db()
+        parent = conn.execute(
+            "SELECT id, phone, role FROM users WHERE role = 'parent' ORDER BY id LIMIT 1"
+        ).fetchone()
+        conn.close()
+        token = create_token(parent["id"], parent["role"], parent["phone"])
+        response = self.client.post(
+            "/api/erp/students/resync",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        self.assertEqual(response.status_code, 403)
+
     def test_admin_can_create_and_update_student_with_guardian(self):
         created = self.client.post(
             "/api/erp/students",
