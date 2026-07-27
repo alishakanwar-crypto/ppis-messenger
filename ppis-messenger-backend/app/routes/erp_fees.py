@@ -305,7 +305,7 @@ async def generate(body:GenerateIn,idempotency_key:str=Header(...,alias="Idempot
             if body.dry_run: created.append({"student_id":student["id"],"gross_paise":gross,"concession_paise":total_con,"net_paise":gross-total_con}); continue
             n=counter(conn,"invoice"); sname=session_row(conn,body.session_id)["name"]; number=f"PPIS/{sname}/{n:06d}"; now=_ist_now()
             due=(date.fromisoformat(now[:10])+timedelta(days=15)).isoformat()
-            cur=conn.execute("INSERT INTO erp_invoices(invoice_number,student_id,session_id,period_code,issue_date,due_date,gross_paise,concession_paise,net_paise,idempotency_key,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",(number,student["id"],body.session_id,body.period_code,now[:10],due,gross,total_con,gross-total_con,idempotency_key if not created else None,now,now))
+            cur=conn.execute("INSERT INTO erp_invoices(invoice_number,student_id,session_id,period_code,issue_date,due_date,gross_paise,concession_paise,net_paise,status,idempotency_key,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",(number,student["id"],body.session_id,body.period_code,now[:10],due,gross,total_con,gross-total_con,"issued",idempotency_key if not created else None,now,now))
             for line in lines: conn.execute("INSERT INTO erp_invoice_lines(invoice_id,fee_head_id,description,amount_paise,concession_paise,concession_id) VALUES(?,?,?,?,?,?)",(cur.lastrowid,*line))
             audit(conn,user["user_id"],"generate","invoice",cur.lastrowid,{"period_code":body.period_code}); created.append(invoice_payload(conn,cur.lastrowid))
         conn.commit(); return {"created":created,"skipped_existing":skipped,"invoices":created}
