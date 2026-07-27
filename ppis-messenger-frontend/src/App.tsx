@@ -4,11 +4,20 @@ import Login from "./pages/Login";
 import ChatList from "./pages/ChatList";
 import ChatScreen from "./pages/ChatScreen";
 import AdminDashboard from "./pages/AdminDashboard";
+import ErpDashboard from "./pages/ErpDashboard";
 import Profile from "./pages/Profile";
+import FeesPage from "./pages/Fees";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { token } = useAuth();
   if (!token) return <Navigate to="/login" replace />;
+  return <>{children}</>;
+}
+
+function AdminRoute({ children }: { children: React.ReactNode }) {
+  const { token, isAdmin } = useAuth();
+  if (!token) return <Navigate to="/login" replace />;
+  if (!isAdmin) return <Navigate to="/" replace />;
   return <>{children}</>;
 }
 
@@ -53,6 +62,15 @@ function AppRoutes() {
           </ProtectedRoute>
         }
       />
+      <Route
+        path="/erp"
+        element={
+          <AdminRoute>
+            <ErpDashboard />
+          </AdminRoute>
+        }
+      />
+      <Route path="/erp/fees" element={<AdminRoute><FeesPage /></AdminRoute>} />
       <Route
         path="/profile"
         element={

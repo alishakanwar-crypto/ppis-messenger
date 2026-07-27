@@ -1,0 +1,8 @@
+ppis-messenger-backend/app/__pycache__/
+*.pyc
+ppis-messenger-backend/pi_academic_session.xlsx
+ppis-messenger-backend/pi_sheet_data.json
+ppis-messenger-frontend/dist/
+ppis-messenger-frontend/node_modules/
+ppis-messenger-backend/.env
+ppis-messenger-frontend/.env

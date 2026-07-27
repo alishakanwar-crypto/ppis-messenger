@@ -187,3 +187,173 @@ export async function deleteStudentPhoto(photoId: number) {
 export function getStudentPhotoUrl(photoId: number): string {
   return `${API_URL}/api/admin/student-photo-image/${photoId}`;
 }
+
+// ERP
+export async function getErpOverview() {
+  return apiCall("/api/erp/overview");
+}
+
+export async function getErpStudents(params: {
+  search?: string;
+  grade?: string;
+  status?: string;
+  page?: number;
+  limit?: number;
+} = {}) {
+  const qs = new URLSearchParams();
+  if (params.search) qs.set("search", params.search);
+  if (params.grade) qs.set("grade", params.grade);
+  if (params.status) qs.set("status", params.status);
+  if (params.page) qs.set("page", String(params.page));
+  if (params.limit) qs.set("limit", String(params.limit));
+  return apiCall(`/api/erp/students?${qs.toString()}`);
+}
+
+export async function getErpStudent(studentId: number) {
+  return apiCall(`/api/erp/students/${studentId}`);
+}
+
+export async function createErpStudent(student: {
+  admission_number?: string;
+  full_name: string;
+  grade: string;
+  date_of_birth?: string;
+  gender?: string;
+  address?: string;
+  transport?: string;
+  status?: string;
+  guardians?: Array<{
+    full_name: string;
+    phone?: string;
+    relationship?: string;
+    is_primary?: boolean;
+  }>;
+}) {
+  return apiCall("/api/erp/students", {
+    method: "POST",
+    body: JSON.stringify(student),
+  });
+}
+
+export async function getFeeSummary(sessionId: number) {
+  return apiCall(`/api/erp/fees/summary?session_id=${sessionId}`);
+}
+export async function getFeeSessions() { return apiCall("/api/erp/sessions"); }
+export async function getFeeHeads() { return apiCall("/api/erp/fee-heads"); }
+export async function getFeeStructures(params: { session_id?: number; grade?: string } = {}) {
+  const qs = new URLSearchParams();
+  if (params.session_id) qs.set("session_id", String(params.session_id));
+  if (params.grade) qs.set("grade", params.grade);
+  return apiCall(`/api/erp/fee-structures?${qs}`);
+}
+export interface FeeSession { id: number; name: string; start_date: string; end_date: string; is_current: number }
+export interface FeeHead { id: number; code: string; name: string; is_refundable: number; is_active: number }
+export interface FeeStructureItem {
+  id?: number;
+  fee_head_id: number;
+  code?: string;
+  name?: string;
+  amount_paise: number;
+  is_optional: number;
+}
+export interface FeeStructure {
+  id: number;
+  session_id: number;
+  grade: string;
+  frequency: "monthly" | "quarterly" | "annual" | "one_time";
+  status: "draft" | "published" | "archived";
+  items: FeeStructureItem[];
+}
+export interface StudentFeeSummary {
+  plan: Array<{ id: number; session_id: number; structure_id: number; transport_opted: number }>;
+  invoices: Array<{
+    id: number;
+    invoice_number: string;
+    due_date: string;
+    net_paise: number;
+    paid_paise: number;
+    status: string;
+  }>;
+  receipts: Array<{ id: number; receipt_number: string; amount_paise: number; paid_at: string }>;
+  dues: number;
+}
+export interface FeeDue {
+  id: number;
+  invoice_number: string;
+  full_name: string;
+  grade: string;
+  net_paise: number;
+  paid_paise: number;
+  due_date: string;
+}
+
+export async function createFeeHead(body: { code: string; name: string; is_refundable: boolean }) {
+  return apiCall("/api/erp/fee-heads", { method: "POST", body: JSON.stringify(body) });
+}
+export async function createFeeStructure(body: {
+  session_id: number;
+  grade: string;
+  frequency: FeeStructure["frequency"];
+  items: Array<{ fee_head_id: number; amount_paise: number; is_optional: boolean }>;
+}) {
+  return apiCall("/api/erp/fee-structures", { method: "POST", body: JSON.stringify(body) });
+}
+export async function updateFeeStructure(structureId: number, body: {
+  session_id: number;
+  grade: string;
+  frequency: FeeStructure["frequency"];
+  items: Array<{ fee_head_id: number; amount_paise: number; is_optional: boolean }>;
+}) {
+  return apiCall(`/api/erp/fee-structures/${structureId}`, { method: "PUT", body: JSON.stringify(body) });
+}
+export async function publishFeeStructure(structureId: number) {
+  return apiCall(`/api/erp/fee-structures/${structureId}/publish`, { method: "POST" });
+}
+export async function upsertFeePlan(studentId: number, body: {
+  session_id: number;
+  structure_id: number;
+  transport_opted: boolean;
+}) {
+  return apiCall(`/api/erp/students/${studentId}/fee-plan`, { method: "POST", body: JSON.stringify(body) });
+}
+export async function getStudentFees(studentId: number, sessionId: number) {
+  return apiCall(`/api/erp/students/${studentId}/fees?session_id=${sessionId}`);
+}
+export async function getFeeDues(sessionId: number, grade = "") {
+  const qs = new URLSearchParams({ session_id: String(sessionId) });
+  if (grade) qs.set("grade", grade);
+  return apiCall(`/api/erp/fees/dues?${qs.toString()}`);
+}
+export async function listInvoices(params: {
+  session_id?: number;
+  grade?: string;
+  status?: string;
+  student_id?: number;
+} = {}) {
+  const qs = new URLSearchParams();
+  if (params.session_id) qs.set("session_id", String(params.session_id));
+  if (params.grade) qs.set("grade", params.grade);
+  if (params.status) qs.set("status", params.status);
+  if (params.student_id) qs.set("student_id", String(params.student_id));
+  return apiCall(`/api/erp/invoices?${qs.toString()}`);
+}
+export async function generateInvoices(body: {
+  session_id: number;
+  period_code: string;
+  grade?: string;
+  student_ids?: number[];
+  dry_run: boolean;
+}, idempotencyKey: string) {
+  return apiCall("/api/erp/invoices/generate", { method: "POST", headers: { "Idempotency-Key": idempotencyKey }, body: JSON.stringify(body) });
+}
+export async function collectPayment(body: {
+  student_id: number;
+  session_id: number;
+  amount_paise: number;
+  method: string;
+  reference_last4?: string;
+  bank_label?: string;
+  allocations?: Array<{ invoice_id: number; amount_paise: number }>;
+}, idempotencyKey: string) {
+  return apiCall("/api/erp/payments", { method: "POST", headers: { "Idempotency-Key": idempotencyKey }, body: JSON.stringify(body) });
+}
