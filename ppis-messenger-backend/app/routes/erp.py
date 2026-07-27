@@ -119,6 +119,13 @@ async def get_erp_overview(user: dict = Depends(require_admin)):
             """SELECT id, action, entity_id, details, created_at
                FROM erp_audit_log ORDER BY id DESC LIMIT 8"""
         ).fetchall()
+        fees_outstanding = conn.execute(
+            "SELECT COALESCE(SUM(net_paise-paid_paise),0) AS n FROM erp_invoices WHERE status != 'cancelled'"
+        ).fetchone()["n"]
+        fees_collected_month = conn.execute(
+            "SELECT COALESCE(SUM(amount_paise),0) AS n FROM erp_payments WHERE status='confirmed' AND substr(paid_at,1,7)=substr(?,1,7)",
+            (_ist_now(),),
+        ).fetchone()["n"]
     finally:
         conn.close()
 
@@ -135,6 +142,8 @@ async def get_erp_overview(user: dict = Depends(require_admin)):
             }
             for row in recent_updates
         ],
+        "fees_outstanding_paise": fees_outstanding,
+        "fees_collected_this_month_paise": fees_collected_month,
     }
 
 

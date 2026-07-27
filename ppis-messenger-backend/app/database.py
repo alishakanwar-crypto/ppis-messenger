@@ -228,6 +228,81 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_student_photos_grade ON student_photos(grade);
         CREATE INDEX IF NOT EXISTS idx_group_members_group ON group_members(group_id);
         CREATE INDEX IF NOT EXISTS idx_group_members_user ON group_members(user_id);
+
+        CREATE TABLE IF NOT EXISTS erp_academic_sessions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE,
+            start_date TEXT NOT NULL, end_date TEXT NOT NULL,
+            is_current INTEGER NOT NULL DEFAULT 0 CHECK(is_current IN (0,1)),
+            created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_erp_current_session
+            ON erp_academic_sessions(is_current) WHERE is_current = 1;
+        CREATE TABLE IF NOT EXISTS erp_fee_heads (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, code TEXT NOT NULL UNIQUE,
+            name TEXT NOT NULL, is_refundable INTEGER NOT NULL DEFAULT 0 CHECK(is_refundable IN (0,1)),
+            is_active INTEGER NOT NULL DEFAULT 1 CHECK(is_active IN (0,1))
+        );
+        CREATE TABLE IF NOT EXISTS erp_fee_structures (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, session_id INTEGER NOT NULL REFERENCES erp_academic_sessions(id),
+            grade TEXT NOT NULL, frequency TEXT NOT NULL CHECK(frequency IN ('monthly','quarterly','annual','one_time')),
+            status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft','published','archived')),
+            published_at TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+            UNIQUE(session_id, grade)
+        );
+        CREATE TABLE IF NOT EXISTS erp_fee_structure_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, structure_id INTEGER NOT NULL REFERENCES erp_fee_structures(id) ON DELETE CASCADE,
+            fee_head_id INTEGER NOT NULL REFERENCES erp_fee_heads(id), amount_paise INTEGER NOT NULL CHECK(amount_paise >= 0),
+            is_optional INTEGER NOT NULL DEFAULT 0 CHECK(is_optional IN (0,1)), UNIQUE(structure_id, fee_head_id)
+        );
+        CREATE TABLE IF NOT EXISTS erp_student_fee_plans (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER NOT NULL REFERENCES erp_students(id),
+            session_id INTEGER NOT NULL REFERENCES erp_academic_sessions(id), structure_id INTEGER NOT NULL REFERENCES erp_fee_structures(id),
+            transport_opted INTEGER NOT NULL DEFAULT 0 CHECK(transport_opted IN (0,1)),
+            UNIQUE(student_id, session_id)
+        );
+        CREATE TABLE IF NOT EXISTS erp_concessions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER NOT NULL REFERENCES erp_students(id),
+            session_id INTEGER NOT NULL REFERENCES erp_academic_sessions(id), fee_head_id INTEGER REFERENCES erp_fee_heads(id),
+            kind TEXT NOT NULL CHECK(kind IN ('percent','amount')), value INTEGER NOT NULL CHECK(value >= 0),
+            reason TEXT NOT NULL, approved_by_user_id INTEGER REFERENCES users(id),
+            status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','revoked')),
+            created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS erp_invoices (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, invoice_number TEXT NOT NULL UNIQUE,
+            student_id INTEGER NOT NULL REFERENCES erp_students(id), session_id INTEGER NOT NULL REFERENCES erp_academic_sessions(id),
+            period_code TEXT NOT NULL, issue_date TEXT NOT NULL, due_date TEXT NOT NULL,
+            gross_paise INTEGER NOT NULL CHECK(gross_paise >= 0), concession_paise INTEGER NOT NULL DEFAULT 0 CHECK(concession_paise >= 0),
+            net_paise INTEGER NOT NULL CHECK(net_paise >= 0), paid_paise INTEGER NOT NULL DEFAULT 0 CHECK(paid_paise >= 0),
+            status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft','issued','partially_paid','paid','cancelled')),
+            cancel_reason TEXT, idempotency_key TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_erp_invoice_period
+            ON erp_invoices(student_id, session_id, period_code) WHERE status != 'cancelled';
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_erp_invoice_idempotency
+            ON erp_invoices(idempotency_key) WHERE idempotency_key IS NOT NULL;
+        CREATE INDEX IF NOT EXISTS idx_erp_invoice_status_due ON erp_invoices(status, due_date);
+        CREATE TABLE IF NOT EXISTS erp_invoice_lines (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, invoice_id INTEGER NOT NULL REFERENCES erp_invoices(id) ON DELETE CASCADE,
+            fee_head_id INTEGER REFERENCES erp_fee_heads(id), description TEXT NOT NULL,
+            amount_paise INTEGER NOT NULL CHECK(amount_paise >= 0), concession_paise INTEGER NOT NULL DEFAULT 0 CHECK(concession_paise >= 0),
+            concession_id INTEGER REFERENCES erp_concessions(id)
+        );
+        CREATE TABLE IF NOT EXISTS erp_payments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, receipt_number TEXT NOT NULL UNIQUE,
+            student_id INTEGER NOT NULL REFERENCES erp_students(id), session_id INTEGER NOT NULL REFERENCES erp_academic_sessions(id),
+            amount_paise INTEGER NOT NULL CHECK(amount_paise > 0),
+            method TEXT NOT NULL CHECK(method IN ('cash','cheque','neft','upi','dd','adjustment')),
+            reference_last4 TEXT CHECK(length(reference_last4) <= 4), bank_label TEXT NOT NULL DEFAULT '',
+            paid_at TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'confirmed' CHECK(status IN ('confirmed','reversed')),
+            reversal_reason TEXT, collected_by_user_id INTEGER REFERENCES users(id), idempotency_key TEXT UNIQUE,
+            created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS erp_payment_allocations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, payment_id INTEGER NOT NULL REFERENCES erp_payments(id) ON DELETE CASCADE,
+            invoice_id INTEGER NOT NULL REFERENCES erp_invoices(id), amount_paise INTEGER NOT NULL CHECK(amount_paise > 0), created_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS erp_document_counters (scope TEXT PRIMARY KEY, next_value INTEGER NOT NULL);
     """)
     # Migrations: add columns that might be missing on existing databases
     try:
@@ -236,6 +311,10 @@ def init_db():
     except sqlite3.OperationalError:
         pass  # Column already exists
 
+    now = _ist_now()
+    conn.execute("INSERT OR IGNORE INTO erp_academic_sessions(name,start_date,end_date,is_current,created_at,updated_at) VALUES ('2026-27','2026-04-01','2027-03-31',1,?,?)", (now, now))
+    for code, name, refundable in (("TUITION","Tuition",0),("TRANSPORT","Transport",0),("ADMISSION","Admission",0),("ANNUAL","Annual",0),("EXAM","Exam",0)):
+        conn.execute("INSERT OR IGNORE INTO erp_fee_heads(code,name,is_refundable,is_active) VALUES (?,?,?,1)", (code,name,refundable))
     conn.commit()
     conn.close()
     logger.info(f"Database initialized at {DB_PATH}")

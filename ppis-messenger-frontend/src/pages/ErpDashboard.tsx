@@ -256,6 +256,12 @@ export default function ErpDashboard() {
             <Plus size={18} />
             Add student
           </button>
+          <button
+            onClick={() => navigate("/erp/fees")}
+            className="inline-flex items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm font-semibold text-blue-700"
+          >
+            Fees &amp; payments
+          </button>
         </section>
 
         <section className="mb-7 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">

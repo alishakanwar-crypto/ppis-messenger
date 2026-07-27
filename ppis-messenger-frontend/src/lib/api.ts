@@ -234,3 +234,21 @@ export async function createErpStudent(student: {
     body: JSON.stringify(student),
   });
 }
+
+export async function getFeeSummary(sessionId: number) {
+  return apiCall(`/api/erp/fees/summary?session_id=${sessionId}`);
+}
+export async function getFeeSessions() { return apiCall("/api/erp/sessions"); }
+export async function getFeeHeads() { return apiCall("/api/erp/fee-heads"); }
+export async function getFeeStructures(params: { session_id?: number; grade?: string } = {}) {
+  const qs = new URLSearchParams();
+  if (params.session_id) qs.set("session_id", String(params.session_id));
+  if (params.grade) qs.set("grade", params.grade);
+  return apiCall(`/api/erp/fee-structures?${qs}`);
+}
+export async function generateInvoices(body: object, idempotencyKey: string) {
+  return apiCall("/api/erp/invoices/generate", { method: "POST", headers: { "Idempotency-Key": idempotencyKey }, body: JSON.stringify(body) });
+}
+export async function collectPayment(body: object, idempotencyKey: string) {
+  return apiCall("/api/erp/payments", { method: "POST", headers: { "Idempotency-Key": idempotencyKey }, body: JSON.stringify(body) });
+}
