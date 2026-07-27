@@ -4,6 +4,7 @@ import Login from "./pages/Login";
 import ChatList from "./pages/ChatList";
 import ChatScreen from "./pages/ChatScreen";
 import AdminDashboard from "./pages/AdminDashboard";
+import ErpDashboard from "./pages/ErpDashboard";
 import Profile from "./pages/Profile";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -50,6 +51,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <AdminDashboard />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/erp"
+        element={
+          <ProtectedRoute>
+            <ErpDashboard />
           </ProtectedRoute>
         }
       />
