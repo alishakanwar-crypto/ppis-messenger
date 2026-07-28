@@ -333,6 +333,45 @@ export async function endTransportAssignment(assignmentId: number) {
   return apiCall(`/api/erp/transport/assignments/${assignmentId}/end`, { method: "POST" });
 }
 export async function getTransportSummary() { return apiCall("/api/erp/transport/summary"); }
+export interface InventoryCategory { id: number; name: string; item_count?: number }
+export interface InventoryItem {
+  id: number;
+  category_id?: number | null;
+  category_name?: string;
+  sku: string;
+  name: string;
+  unit: string;
+  quantity: number;
+  reorder_level: number;
+  unit_cost: number;
+  location: string;
+  status: "active" | "inactive";
+}
+export async function listInventoryCategories() { return apiCall("/api/erp/inventory/categories"); }
+export async function createInventoryCategory(name: string) {
+  return apiCall("/api/erp/inventory/categories", { method: "POST", body: JSON.stringify({ name }) });
+}
+export async function listInventoryItems(params: { category_id?: number; status?: string; search?: string; low_stock?: boolean; page?: number; limit?: number } = {}) {
+  const qs = new URLSearchParams();
+  if (params.category_id) qs.set("category_id", String(params.category_id));
+  if (params.status) qs.set("status", params.status);
+  if (params.search) qs.set("search", params.search);
+  if (params.low_stock) qs.set("low_stock", "true");
+  if (params.page) qs.set("page", String(params.page));
+  if (params.limit) qs.set("limit", String(params.limit));
+  return apiCall(`/api/erp/inventory/items?${qs}`);
+}
+export async function getInventoryItem(itemId: number) { return apiCall(`/api/erp/inventory/items/${itemId}`); }
+export async function createInventoryItem(body: { category_id?: number; name: string; unit?: string; reorder_level?: number; unit_cost?: number; location?: string; status?: InventoryItem["status"] }) {
+  return apiCall("/api/erp/inventory/items", { method: "POST", body: JSON.stringify(body) });
+}
+export async function updateInventoryItem(itemId: number, body: Partial<{ category_id: number | null; name: string; unit: string; reorder_level: number; unit_cost: number; location: string; status: InventoryItem["status"] }>) {
+  return apiCall(`/api/erp/inventory/items/${itemId}`, { method: "PUT", body: JSON.stringify(body) });
+}
+export async function createInventoryTransaction(itemId: number, body: { txn_type: "in" | "out" | "adjust"; quantity?: number; new_quantity?: number; note?: string }) {
+  return apiCall(`/api/erp/inventory/items/${itemId}/transaction`, { method: "POST", body: JSON.stringify(body) });
+}
+export async function getInventorySummary() { return apiCall("/api/erp/inventory/summary"); }
 export interface ExamSubject {
   id: number;
   exam_id: number;

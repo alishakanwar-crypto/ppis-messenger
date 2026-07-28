@@ -13,6 +13,7 @@ from app.routes import (
     erp_attendance,
     erp_exams,
     erp_fees,
+    erp_inventory,
     erp_portal,
     erp_timetable,
     erp_staff,
@@ -58,6 +59,7 @@ app.include_router(erp_attendance.router, prefix="/api/erp", tags=["erp-attendan
 app.include_router(erp_admissions.router, prefix="/api/erp", tags=["erp-admissions"])
 app.include_router(erp_timetable.router, prefix="/api/erp", tags=["erp-timetable"])
 app.include_router(erp_staff.router, prefix="/api/erp", tags=["erp-staff"])
+app.include_router(erp_inventory.router, prefix="/api/erp", tags=["erp-inventory"])
 
 
 @app.get("/healthz")

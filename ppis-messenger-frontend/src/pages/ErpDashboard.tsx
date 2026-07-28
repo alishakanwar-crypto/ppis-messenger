@@ -269,6 +269,12 @@ export default function ErpDashboard() {
             Transport
           </button>
           <button
+            onClick={() => navigate("/erp/inventory")}
+            className="inline-flex items-center justify-center gap-2 rounded-xl border border-lime-200 bg-lime-50 px-4 py-2.5 text-sm font-semibold text-lime-700"
+          >
+            Inventory
+          </button>
+          <button
             onClick={() => navigate("/erp/exams")}
             className="inline-flex items-center justify-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm font-semibold text-amber-700"
           >

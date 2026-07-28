@@ -348,6 +348,45 @@ def init_db():
             ON erp_transport_assignments(student_id) WHERE status = 'active';
         CREATE INDEX IF NOT EXISTS idx_erp_transport_assignment_route
             ON erp_transport_assignments(route_id);
+        CREATE TABLE IF NOT EXISTS erp_inventory_categories (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_erp_inventory_category_name_lower
+            ON erp_inventory_categories(lower(name));
+        CREATE TABLE IF NOT EXISTS erp_inventory_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            category_id INTEGER REFERENCES erp_inventory_categories(id),
+            sku TEXT NOT NULL DEFAULT '',
+            name TEXT NOT NULL,
+            unit TEXT NOT NULL DEFAULT 'unit',
+            quantity INTEGER NOT NULL DEFAULT 0,
+            reorder_level INTEGER NOT NULL DEFAULT 0,
+            unit_cost_paise INTEGER NOT NULL DEFAULT 0,
+            location TEXT NOT NULL DEFAULT '',
+            status TEXT NOT NULL DEFAULT 'active',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_erp_inventory_item_category
+            ON erp_inventory_items(category_id);
+        CREATE INDEX IF NOT EXISTS idx_erp_inventory_item_status
+            ON erp_inventory_items(status);
+        CREATE TABLE IF NOT EXISTS erp_inventory_transactions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            item_id INTEGER NOT NULL REFERENCES erp_inventory_items(id),
+            txn_type TEXT NOT NULL,
+            quantity INTEGER NOT NULL,
+            note TEXT NOT NULL DEFAULT '',
+            created_by INTEGER REFERENCES users(id),
+            created_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_erp_inventory_txn_item
+            ON erp_inventory_transactions(item_id);
+        CREATE INDEX IF NOT EXISTS idx_erp_inventory_txn_created
+            ON erp_inventory_transactions(created_at);
         CREATE TABLE IF NOT EXISTS erp_exams (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             session_id INTEGER REFERENCES erp_academic_sessions(id),
