@@ -341,6 +341,81 @@ export async function getExamResults(examId: number, grade = "") {
   const qs = grade ? `?grade=${encodeURIComponent(grade)}` : "";
   return apiCall(`/api/erp/exams/${examId}/results${qs}`);
 }
+export interface AttendanceStudent {
+  student_id: number;
+  admission_number: string;
+  full_name: string;
+  grade: string;
+  attendance_id?: number;
+  status?: string | null;
+  remarks?: string | null;
+}
+export interface AttendanceSummaryStudent {
+  student_id: number;
+  full_name: string;
+  grade: string;
+  present: number;
+  total: number;
+  percentage: number;
+}
+export interface LeaveRequest {
+  id: number;
+  student_id: number;
+  session_id: number;
+  from_date: string;
+  to_date: string;
+  leave_type: "sick" | "casual" | "other";
+  reason: string;
+  status: "pending" | "approved" | "rejected";
+  decided_at?: string | null;
+  created_at: string;
+  full_name?: string;
+  grade?: string;
+}
+export async function getAttendanceRoster(params: { grade?: string; date?: string; session_id?: number } = {}) {
+  const qs = new URLSearchParams();
+  if (params.grade) qs.set("grade", params.grade);
+  if (params.date) qs.set("date", params.date);
+  if (params.session_id) qs.set("session_id", String(params.session_id));
+  return apiCall(`/api/erp/attendance?${qs}`);
+}
+export async function markAttendance(body: {
+  session_id: number;
+  date: string;
+  entries: Array<{ student_id: number; status: string; remarks?: string }>;
+}) {
+  return apiCall("/api/erp/attendance/mark", { method: "POST", body: JSON.stringify(body) });
+}
+export async function getAttendanceSummary(params: { grade?: string; from: string; to: string; session_id?: number }) {
+  const qs = new URLSearchParams({ from: params.from, to: params.to });
+  if (params.grade) qs.set("grade", params.grade);
+  if (params.session_id) qs.set("session_id", String(params.session_id));
+  return apiCall(`/api/erp/attendance/summary?${qs}`);
+}
+export async function getStudentAttendance(studentId: number, params: { from: string; to: string }) {
+  const qs = new URLSearchParams({ from: params.from, to: params.to });
+  return apiCall(`/api/erp/attendance/student/${studentId}?${qs}`);
+}
+export async function listLeaveRequests(status = "") {
+  const qs = status ? `?status=${encodeURIComponent(status)}` : "";
+  return apiCall(`/api/erp/leave${qs}`);
+}
+export async function createLeaveRequest(body: {
+  student_id: number;
+  session_id: number;
+  from_date: string;
+  to_date: string;
+  leave_type: "sick" | "casual" | "other";
+  reason: string;
+}) {
+  return apiCall("/api/erp/leave", { method: "POST", body: JSON.stringify(body) });
+}
+export async function decideLeaveRequest(leaveId: number, decision: "approved" | "rejected") {
+  return apiCall(`/api/erp/leave/${leaveId}/decision`, {
+    method: "POST",
+    body: JSON.stringify({ decision }),
+  });
+}
 export async function getFeeHeads() { return apiCall("/api/erp/fee-heads"); }
 export async function getFeeStructures(params: { session_id?: number; grade?: string } = {}) {
   const qs = new URLSearchParams();

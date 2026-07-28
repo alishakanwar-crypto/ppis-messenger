@@ -4,7 +4,17 @@ from contextlib import asynccontextmanager
 import logging
 
 from app.database import init_db, seed_erp_students_from_pi_sheet, seed_school_data
-from app.routes import admin, auth, chat, erp, erp_exams, erp_fees, erp_portal, groups
+from app.routes import (
+    admin,
+    auth,
+    chat,
+    erp,
+    erp_attendance,
+    erp_exams,
+    erp_fees,
+    erp_portal,
+    groups,
+)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -39,6 +49,7 @@ app.include_router(erp.router, prefix="/api/erp", tags=["erp"])
 app.include_router(erp_fees.router, prefix="/api/erp", tags=["erp-fees"])
 app.include_router(erp_exams.router, prefix="/api/erp", tags=["erp-exams"])
 app.include_router(erp_portal.router, prefix="/api/erp", tags=["erp-portal"])
+app.include_router(erp_attendance.router, prefix="/api/erp", tags=["erp-attendance"])
 
 
 @app.get("/healthz")
