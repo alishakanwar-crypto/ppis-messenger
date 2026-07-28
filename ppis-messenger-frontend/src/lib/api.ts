@@ -416,6 +416,67 @@ export async function decideLeaveRequest(leaveId: number, decision: "approved" |
     body: JSON.stringify({ decision }),
   });
 }
+export interface AdmissionEnquiry {
+  id: number;
+  application_number: string;
+  applicant_name: string;
+  grade_applying: string;
+  date_of_birth: string;
+  gender: string;
+  parent_name: string;
+  parent_phone: string;
+  parent_email: string;
+  address: string;
+  previous_school: string;
+  source: string;
+  status: "enquiry" | "applied" | "shortlisted" | "offered" | "admitted" | "rejected" | "withdrawn";
+  notes: string;
+  session_id?: number | null;
+  student_id?: number | null;
+  created_at: string;
+  updated_at: string;
+  student_full_name?: string | null;
+}
+export async function listAdmissions(params: { status?: string; grade?: string; search?: string; page?: number; limit?: number } = {}) {
+  const qs = new URLSearchParams();
+  if (params.status) qs.set("status", params.status);
+  if (params.grade) qs.set("grade", params.grade);
+  if (params.search) qs.set("search", params.search);
+  if (params.page) qs.set("page", String(params.page));
+  if (params.limit) qs.set("limit", String(params.limit));
+  return apiCall(`/api/erp/admissions?${qs}`);
+}
+export async function getAdmission(admissionId: number) {
+  return apiCall(`/api/erp/admissions/${admissionId}`);
+}
+export async function createAdmission(body: {
+  applicant_name: string;
+  grade_applying?: string;
+  date_of_birth?: string;
+  gender?: string;
+  parent_name?: string;
+  parent_phone?: string;
+  parent_email?: string;
+  address?: string;
+  previous_school?: string;
+  source?: string;
+  notes?: string;
+  session_id?: number;
+}) {
+  return apiCall("/api/erp/admissions", { method: "POST", body: JSON.stringify(body) });
+}
+export async function updateAdmission(admissionId: number, body: Partial<Omit<AdmissionEnquiry, "id" | "application_number" | "status" | "student_id" | "created_at" | "updated_at" | "student_full_name">>) {
+  return apiCall(`/api/erp/admissions/${admissionId}`, { method: "PUT", body: JSON.stringify(body) });
+}
+export async function setAdmissionStatus(admissionId: number, status: AdmissionEnquiry["status"], note = "") {
+  return apiCall(`/api/erp/admissions/${admissionId}/status`, { method: "POST", body: JSON.stringify({ status, note }) });
+}
+export async function convertAdmission(admissionId: number) {
+  return apiCall(`/api/erp/admissions/${admissionId}/convert`, { method: "POST" });
+}
+export async function getAdmissionsSummary() {
+  return apiCall("/api/erp/admissions/summary");
+}
 export async function getFeeHeads() { return apiCall("/api/erp/fee-heads"); }
 export async function getFeeStructures(params: { session_id?: number; grade?: string } = {}) {
   const qs = new URLSearchParams();

@@ -280,6 +280,12 @@ export default function ErpDashboard() {
           >
             Attendance &amp; Leave
           </button>
+          <button
+            onClick={() => navigate("/erp/admissions")}
+            className="inline-flex items-center justify-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-4 py-2.5 text-sm font-semibold text-violet-700"
+          >
+            Admissions
+          </button>
         </section>
 
         <section className="mb-7 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">

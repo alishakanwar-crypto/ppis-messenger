@@ -381,6 +381,33 @@ def init_db():
             ON erp_leave_requests(status);
         CREATE INDEX IF NOT EXISTS idx_erp_leave_student
             ON erp_leave_requests(student_id);
+        CREATE TABLE IF NOT EXISTS erp_admission_enquiries (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            application_number TEXT NOT NULL DEFAULT '',
+            applicant_name TEXT NOT NULL,
+            grade_applying TEXT NOT NULL DEFAULT '',
+            date_of_birth TEXT NOT NULL DEFAULT '',
+            gender TEXT NOT NULL DEFAULT '',
+            parent_name TEXT NOT NULL DEFAULT '',
+            parent_phone TEXT NOT NULL DEFAULT '',
+            parent_email TEXT NOT NULL DEFAULT '',
+            address TEXT NOT NULL DEFAULT '',
+            previous_school TEXT NOT NULL DEFAULT '',
+            source TEXT NOT NULL DEFAULT '',
+            status TEXT NOT NULL DEFAULT 'enquiry',
+            notes TEXT NOT NULL DEFAULT '',
+            session_id INTEGER REFERENCES erp_academic_sessions(id),
+            student_id INTEGER REFERENCES erp_students(id),
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_erp_admission_status
+            ON erp_admission_enquiries(status);
+        CREATE INDEX IF NOT EXISTS idx_erp_admission_grade
+            ON erp_admission_enquiries(grade_applying);
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_erp_admission_application_number
+            ON erp_admission_enquiries(application_number)
+            WHERE application_number != '';
     """)
     # Migrations: add columns that might be missing on existing databases
     try:
