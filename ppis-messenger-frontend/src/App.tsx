@@ -10,6 +10,7 @@ import FeesPage from "./pages/Fees";
 import ExamsPage from "./pages/Exams";
 import PortalPage from "./pages/Portal";
 import TeachersPage from "./pages/Teachers";
+import AttendancePage from "./pages/Attendance";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { token } = useAuth();
@@ -77,6 +78,7 @@ function AppRoutes() {
       <Route path="/erp/exams" element={<AdminRoute><ExamsPage /></AdminRoute>} />
       <Route path="/erp/teachers" element={<AdminRoute><TeachersPage /></AdminRoute>} />
       <Route path="/portal" element={<ProtectedRoute><PortalPage /></ProtectedRoute>} />
+      <Route path="/erp/attendance" element={<AdminRoute><AttendancePage /></AdminRoute>} />
       <Route
         path="/profile"
         element={

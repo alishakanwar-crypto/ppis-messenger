@@ -346,6 +346,41 @@ def init_db():
             ON erp_exam_marks(subject_id, student_id);
         CREATE INDEX IF NOT EXISTS idx_erp_exam_marks_exam
             ON erp_exam_marks(exam_id);
+        CREATE TABLE IF NOT EXISTS erp_attendance (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            student_id INTEGER NOT NULL REFERENCES erp_students(id),
+            session_id INTEGER NOT NULL REFERENCES erp_academic_sessions(id),
+            date TEXT NOT NULL,
+            status TEXT NOT NULL,
+            remarks TEXT NOT NULL DEFAULT '',
+            marked_by INTEGER REFERENCES users(id),
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_erp_attendance_student_date
+            ON erp_attendance(student_id, date);
+        CREATE INDEX IF NOT EXISTS idx_erp_attendance_date
+            ON erp_attendance(date);
+        CREATE INDEX IF NOT EXISTS idx_erp_attendance_session
+            ON erp_attendance(session_id);
+        CREATE TABLE IF NOT EXISTS erp_leave_requests (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            student_id INTEGER NOT NULL REFERENCES erp_students(id),
+            session_id INTEGER NOT NULL REFERENCES erp_academic_sessions(id),
+            from_date TEXT NOT NULL,
+            to_date TEXT NOT NULL,
+            leave_type TEXT NOT NULL,
+            reason TEXT NOT NULL DEFAULT '',
+            status TEXT NOT NULL DEFAULT 'pending',
+            decided_by INTEGER REFERENCES users(id),
+            decided_at TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_erp_leave_status
+            ON erp_leave_requests(status);
+        CREATE INDEX IF NOT EXISTS idx_erp_leave_student
+            ON erp_leave_requests(student_id);
     """)
     # Migrations: add columns that might be missing on existing databases
     try:
