@@ -268,6 +268,12 @@ export default function ErpDashboard() {
           >
             Exams &amp; Report Cards
           </button>
+          <button
+            onClick={() => navigate("/erp/teachers")}
+            className="inline-flex items-center justify-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-2.5 text-sm font-semibold text-indigo-700"
+          >
+            Teacher Access
+          </button>
         </section>
 
         <section className="mb-7 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">

@@ -59,6 +59,30 @@ export async function loginPin(phone: string, pin: string) {
 export async function getMe() {
   return apiCall("/api/auth/me");
 }
+export async function getPortalMe() { return apiCall("/api/erp/portal/me"); }
+export async function getPortalChildren() { return apiCall("/api/erp/portal/children"); }
+export async function getChildAttendance(studentId: number, from: string, to: string) {
+  return apiCall(`/api/erp/portal/children/${studentId}/attendance?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`);
+}
+export async function getChildFees(studentId: number) { return apiCall(`/api/erp/portal/children/${studentId}/fees`); }
+export async function listChildReportCards(studentId: number) { return apiCall(`/api/erp/portal/children/${studentId}/report-cards`); }
+export async function getChildReportCard(studentId: number, examId: number) { return apiCall(`/api/erp/portal/children/${studentId}/report-cards/${examId}`); }
+export async function getChildHomework(studentId: number) { return apiCall(`/api/erp/portal/children/${studentId}/homework`); }
+export async function getChildTimetable(studentId: number) { return apiCall(`/api/erp/portal/children/${studentId}/timetable`); }
+export async function getTeacherGrades() { return apiCall("/api/erp/portal/teacher/grades"); }
+export async function getGradeStudents(grade: string) { return apiCall(`/api/erp/portal/teacher/grades/${encodeURIComponent(grade)}/students`); }
+export async function getGradeAttendanceSummary(grade: string, from: string, to: string) {
+  return apiCall(`/api/erp/portal/teacher/grades/${encodeURIComponent(grade)}/attendance/summary?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`);
+}
+export async function getGradeHomework(grade: string) { return apiCall(`/api/erp/portal/teacher/grades/${encodeURIComponent(grade)}/homework`); }
+export async function getGradeTimetable(grade: string) { return apiCall(`/api/erp/portal/teacher/grades/${encodeURIComponent(grade)}/timetable`); }
+export async function listTeachers() { return apiCall("/api/erp/portal/teachers"); }
+export async function upsertTeacher(body: { phone: string; name: string; grades: string[] }) {
+  return apiCall("/api/erp/portal/teachers", { method: "POST", body: JSON.stringify(body) });
+}
+export async function unassignTeacherGrade(userId: number, grade: string) {
+  return apiCall(`/api/erp/portal/teachers/${userId}/grades/${encodeURIComponent(grade)}`, { method: "DELETE" });
+}
 
 export async function updateProfile(name: string) {
   return apiCall("/api/auth/profile", {
