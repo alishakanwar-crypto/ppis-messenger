@@ -1,11 +1,18 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { requestOtp, verifyOtp, loginPin, loginStatus, setupPin } from "../lib/api";
+import {
+  requestOtp,
+  verifyOtp,
+  loginPin,
+  loginStatus,
+  requestSetupCode,
+  setupPin,
+} from "../lib/api";
 import { useAuth, type User } from "../lib/auth";
 import StudentAvatar from "../components/StudentAvatar";
 
 type Step = "phone" | "otp" | "pin" | "success";
-type PinStage = "phone" | "login" | "setup";
+type PinStage = "phone" | "login" | "verify";
 
 const PIN_ONLY_AUTH = import.meta.env.VITE_PIN_ONLY_AUTH === "true";
 const PIN_MIN_LENGTH = Number(import.meta.env.VITE_PIN_MIN_LENGTH || "8");
@@ -15,6 +22,7 @@ export default function Login() {
   const [pinStage, setPinStage] = useState<PinStage>(PIN_ONLY_AUTH ? "phone" : "login");
   const [phone, setPhone] = useState("");
   const [otp, setOtp] = useState("");
+  const [code, setCode] = useState("");
   const [pin, setPin] = useState("");
   const [confirmPin, setConfirmPin] = useState("");
   const [error, setError] = useState("");
@@ -84,6 +92,22 @@ export default function Login() {
     }
   };
 
+  const handleRequestSetupCode = async () => {
+    setError("");
+    setLoading(true);
+    try {
+      await requestSetupCode(phone);
+      setCode("");
+      setPin("");
+      setConfirmPin("");
+      setPinStage("verify");
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Unable to send login code");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handlePinContinue = async () => {
     setError("");
     setLoading(true);
@@ -94,9 +118,15 @@ export default function Login() {
         return;
       }
       setHasPin(data.has_pin);
-      setPinStage(data.has_pin ? "login" : "setup");
-      setPin("");
-      setConfirmPin("");
+      if (data.has_pin) {
+        setPinStage("login");
+      } else {
+        await requestSetupCode(phone);
+        setCode("");
+        setPin("");
+        setConfirmPin("");
+        setPinStage("verify");
+      }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Unable to check this phone number");
     } finally {
@@ -106,6 +136,10 @@ export default function Login() {
 
   const handlePinSetup = async () => {
     setError("");
+    if (code.length !== 6) {
+      setError("Enter the 6-digit code sent to your WhatsApp");
+      return;
+    }
     if (pin.length < PIN_MIN_LENGTH) {
       setError(`Passcode must be at least ${PIN_MIN_LENGTH} characters`);
       return;
@@ -116,7 +150,7 @@ export default function Login() {
     }
     setLoading(true);
     try {
-      const data = await setupPin(phone, pin);
+      const data = await setupPin(phone, code, pin);
       login(data.token, data.user);
       navigate("/");
     } catch (e: unknown) {
@@ -128,6 +162,7 @@ export default function Login() {
 
   const resetPinFlow = () => {
     setPhone("");
+    setCode("");
     setPin("");
     setConfirmPin("");
     setHasPin(false);
@@ -334,21 +369,43 @@ export default function Login() {
               </button>
             )}
             {PIN_ONLY_AUTH && (
-              <button
-                onClick={resetPinFlow}
-                className="w-full text-sm text-gray-500 hover:underline"
-              >
-                Change phone number
-              </button>
+              <>
+                <button
+                  onClick={handleRequestSetupCode}
+                  disabled={loading}
+                  className="w-full text-sm text-blue-600 hover:underline disabled:opacity-50"
+                >
+                  Forgot / reset passcode
+                </button>
+                <button
+                  onClick={resetPinFlow}
+                  className="w-full text-sm text-gray-500 hover:underline"
+                >
+                  Change phone number
+                </button>
+              </>
             )}
           </div>
         )}
 
-        {step === "pin" && PIN_ONLY_AUTH && pinStage === "setup" && (
+        {step === "pin" && PIN_ONLY_AUTH && pinStage === "verify" && (
           <div className="space-y-4">
             <p className="text-sm text-gray-600">
-              First-time setup — choose a passcode you'll use to log in.
+              Enter the code sent to your WhatsApp.
             </p>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">WhatsApp code</label>
+              <input
+                type="text"
+                inputMode="numeric"
+                value={code}
+                onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                placeholder="6-digit code"
+                maxLength={6}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-center text-2xl tracking-widest"
+                autoFocus
+              />
+            </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Create your passcode</label>
               <input
@@ -358,11 +415,10 @@ export default function Login() {
                 placeholder={`${PIN_MIN_LENGTH}–12 characters`}
                 maxLength={12}
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-center text-2xl tracking-widest"
-                autoFocus
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Confirm your passcode</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Confirm passcode</label>
               <input
                 type="password"
                 value={confirmPin}
@@ -374,10 +430,17 @@ export default function Login() {
             </div>
             <button
               onClick={handlePinSetup}
-              disabled={loading || pin.length < PIN_MIN_LENGTH || confirmPin.length < PIN_MIN_LENGTH}
+              disabled={loading || code.length !== 6 || pin.length < PIN_MIN_LENGTH || confirmPin.length < PIN_MIN_LENGTH}
               className="w-full py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
             >
               {loading ? "Setting passcode..." : "Set passcode & log in"}
+            </button>
+            <button
+              onClick={handleRequestSetupCode}
+              disabled={loading}
+              className="w-full text-sm text-blue-600 hover:underline disabled:opacity-50"
+            >
+              Resend code
             </button>
             <button
               onClick={resetPinFlow}
