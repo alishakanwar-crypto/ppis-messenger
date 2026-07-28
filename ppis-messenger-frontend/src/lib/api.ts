@@ -263,6 +263,76 @@ export async function getFeeSummary(sessionId: number) {
   return apiCall(`/api/erp/fees/summary?session_id=${sessionId}`);
 }
 export async function getFeeSessions() { return apiCall("/api/erp/sessions"); }
+export interface TransportRoute {
+  id: number;
+  name: string;
+  vehicle_number: string;
+  driver_name: string;
+  driver_phone: string;
+  capacity: number;
+  status: "active" | "inactive";
+  stop_count?: number;
+  assigned_student_count?: number;
+  stops?: TransportStop[];
+  assigned_students?: Array<{ assignment_id: number; student_id: number; full_name: string; grade: string; stop_name?: string }>;
+}
+export interface TransportStop {
+  id: number;
+  route_id: number;
+  name: string;
+  stop_order: number;
+  pickup_time: string;
+  drop_time: string;
+  monthly_fee: number;
+}
+export async function listTransportRoutes(status = "") {
+  const qs = status ? `?status=${encodeURIComponent(status)}` : "";
+  return apiCall(`/api/erp/transport/routes${qs}`);
+}
+export async function createTransportRoute(body: { name: string; vehicle_number?: string; driver_name?: string; driver_phone?: string; capacity?: number; status?: TransportRoute["status"] }) {
+  return apiCall("/api/erp/transport/routes", { method: "POST", body: JSON.stringify(body) });
+}
+export async function getTransportRoute(routeId: number) { return apiCall(`/api/erp/transport/routes/${routeId}`); }
+export async function updateTransportRoute(routeId: number, body: Partial<{ name: string; vehicle_number: string; driver_name: string; driver_phone: string; capacity: number; status: TransportRoute["status"] }>) {
+  return apiCall(`/api/erp/transport/routes/${routeId}`, { method: "PUT", body: JSON.stringify(body) });
+}
+export async function addTransportStop(routeId: number, body: { name: string; stop_order?: number; pickup_time?: string; drop_time?: string; monthly_fee?: number }) {
+  return apiCall(`/api/erp/transport/routes/${routeId}/stops`, { method: "POST", body: JSON.stringify(body) });
+}
+export async function updateTransportStop(stopId: number, body: Partial<{ name: string; stop_order: number; pickup_time: string; drop_time: string; monthly_fee: number }>) {
+  return apiCall(`/api/erp/transport/stops/${stopId}`, { method: "PUT", body: JSON.stringify(body) });
+}
+export async function deleteTransportStop(stopId: number) {
+  return apiCall(`/api/erp/transport/stops/${stopId}`, { method: "DELETE" });
+}
+export interface TransportAssignment {
+  id: number;
+  student_id: number;
+  route_id: number;
+  stop_id?: number | null;
+  full_name: string;
+  grade: string;
+  admission_number: string;
+  route_name: string;
+  stop_name?: string;
+  monthly_fee: number;
+  start_date: string;
+  status: "active" | "inactive";
+}
+export async function listTransportAssignments(params: { route_id?: number; status?: string; search?: string } = {}) {
+  const qs = new URLSearchParams();
+  if (params.route_id) qs.set("route_id", String(params.route_id));
+  if (params.status) qs.set("status", params.status);
+  if (params.search) qs.set("search", params.search);
+  return apiCall(`/api/erp/transport/assignments?${qs}`);
+}
+export async function createTransportAssignment(body: { student_id: number; route_id: number; stop_id?: number; start_date?: string }) {
+  return apiCall("/api/erp/transport/assignments", { method: "POST", body: JSON.stringify(body) });
+}
+export async function endTransportAssignment(assignmentId: number) {
+  return apiCall(`/api/erp/transport/assignments/${assignmentId}/end`, { method: "POST" });
+}
+export async function getTransportSummary() { return apiCall("/api/erp/transport/summary"); }
 export interface ExamSubject {
   id: number;
   exam_id: number;

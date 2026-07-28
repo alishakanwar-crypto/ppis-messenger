@@ -16,6 +16,7 @@ from app.routes import (
     erp_portal,
     erp_timetable,
     erp_staff,
+    erp_transport,
     groups,
 )
 
@@ -50,6 +51,7 @@ app.include_router(admin.router, prefix="/api/admin", tags=["admin"])
 app.include_router(groups.router, prefix="/api/groups", tags=["groups"])
 app.include_router(erp.router, prefix="/api/erp", tags=["erp"])
 app.include_router(erp_fees.router, prefix="/api/erp", tags=["erp-fees"])
+app.include_router(erp_transport.router, prefix="/api/erp", tags=["erp-transport"])
 app.include_router(erp_exams.router, prefix="/api/erp", tags=["erp-exams"])
 app.include_router(erp_portal.router, prefix="/api/erp", tags=["erp-portal"])
 app.include_router(erp_attendance.router, prefix="/api/erp", tags=["erp-attendance"])
