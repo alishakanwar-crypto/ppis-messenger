@@ -9,6 +9,7 @@ from app.routes import (
     auth,
     chat,
     erp,
+    erp_admissions,
     erp_attendance,
     erp_exams,
     erp_fees,
@@ -50,6 +51,7 @@ app.include_router(erp_fees.router, prefix="/api/erp", tags=["erp-fees"])
 app.include_router(erp_exams.router, prefix="/api/erp", tags=["erp-exams"])
 app.include_router(erp_portal.router, prefix="/api/erp", tags=["erp-portal"])
 app.include_router(erp_attendance.router, prefix="/api/erp", tags=["erp-attendance"])
+app.include_router(erp_admissions.router, prefix="/api/erp", tags=["erp-admissions"])
 
 
 @app.get("/healthz")
