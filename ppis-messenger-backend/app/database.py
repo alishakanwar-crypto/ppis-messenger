@@ -303,6 +303,11 @@ def init_db():
             invoice_id INTEGER NOT NULL REFERENCES erp_invoices(id), amount_paise INTEGER NOT NULL CHECK(amount_paise > 0), created_at TEXT NOT NULL
         );
         CREATE TABLE IF NOT EXISTS erp_document_counters (scope TEXT PRIMARY KEY, next_value INTEGER NOT NULL);
+        CREATE TABLE IF NOT EXISTS erp_teacher_grades (
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            grade TEXT NOT NULL,
+            PRIMARY KEY(user_id, grade)
+        );
         CREATE TABLE IF NOT EXISTS erp_exams (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             session_id INTEGER REFERENCES erp_academic_sessions(id),

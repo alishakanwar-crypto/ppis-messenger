@@ -199,6 +199,12 @@ def require_admin(user: dict = Depends(get_current_user)) -> dict:
     return user
 
 
+def require_portal_user(user: dict = Depends(get_current_user)) -> dict:
+    if user["role"] not in ("parent", "teacher"):
+        raise HTTPException(status_code=403, detail="Portal access required")
+    return user
+
+
 # ---- Endpoints ----
 
 @router.post("/request-otp")

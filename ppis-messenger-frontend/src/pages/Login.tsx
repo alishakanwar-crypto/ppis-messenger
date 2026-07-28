@@ -50,9 +50,9 @@ export default function Login() {
       if (data.user.children && data.user.children.length > 0) {
         setLoggedInUser(data.user);
         setStep("success");
-        setTimeout(() => navigate("/"), 2500);
+        setTimeout(() => navigate(data.user.role === "parent" || data.user.role === "teacher" ? "/portal" : "/"), 2500);
       } else {
-        navigate("/");
+        navigate(data.user.role === "parent" || data.user.role === "teacher" ? "/portal" : "/");
       }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Invalid OTP");
