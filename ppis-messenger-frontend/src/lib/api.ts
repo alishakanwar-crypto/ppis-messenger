@@ -239,6 +239,84 @@ export async function getFeeSummary(sessionId: number) {
   return apiCall(`/api/erp/fees/summary?session_id=${sessionId}`);
 }
 export async function getFeeSessions() { return apiCall("/api/erp/sessions"); }
+export interface ExamSubject {
+  id: number;
+  exam_id: number;
+  subject: string;
+  max_marks: number;
+  pass_marks: number;
+  created_at: string;
+}
+export interface Exam {
+  id: number;
+  session_id?: number | null;
+  name: string;
+  term: string;
+  grade: string;
+  max_marks: number;
+  exam_date: string;
+  status: "scheduled" | "ongoing" | "completed" | "published";
+  subject_count?: number;
+  subjects?: ExamSubject[];
+}
+export async function listExams(params: { session_id?: number; grade?: string; status?: string } = {}) {
+  const qs = new URLSearchParams();
+  if (params.session_id) qs.set("session_id", String(params.session_id));
+  if (params.grade) qs.set("grade", params.grade);
+  if (params.status) qs.set("status", params.status);
+  return apiCall(`/api/erp/exams?${qs}`);
+}
+export async function createExam(body: {
+  name: string;
+  session_id?: number;
+  term?: string;
+  grade?: string;
+  max_marks?: number;
+  exam_date?: string;
+  status?: Exam["status"];
+}) {
+  return apiCall("/api/erp/exams", { method: "POST", body: JSON.stringify(body) });
+}
+export async function getExam(examId: number) {
+  return apiCall(`/api/erp/exams/${examId}`);
+}
+export async function updateExam(examId: number, body: Partial<{
+  name: string;
+  session_id: number;
+  term: string;
+  grade: string;
+  max_marks: number;
+  exam_date: string;
+  status: Exam["status"];
+}>) {
+  return apiCall(`/api/erp/exams/${examId}`, { method: "PUT", body: JSON.stringify(body) });
+}
+export async function addExamSubject(examId: number, body: { subject: string; max_marks: number; pass_marks: number }) {
+  return apiCall(`/api/erp/exams/${examId}/subjects`, { method: "POST", body: JSON.stringify(body) });
+}
+export async function deleteExamSubject(examId: number, subjectId: number) {
+  return apiCall(`/api/erp/exams/${examId}/subjects/${subjectId}`, { method: "DELETE" });
+}
+export async function getExamMarks(examId: number, grade = "") {
+  const qs = grade ? `?grade=${encodeURIComponent(grade)}` : "";
+  return apiCall(`/api/erp/exams/${examId}/marks${qs}`);
+}
+export async function saveExamMarks(examId: number, entries: Array<{
+  student_id: number;
+  subject_id: number;
+  marks_obtained?: number | null;
+  is_absent?: boolean;
+  remarks?: string;
+}>) {
+  return apiCall(`/api/erp/exams/${examId}/marks`, { method: "POST", body: JSON.stringify({ entries }) });
+}
+export async function getReportCard(examId: number, studentId: number) {
+  return apiCall(`/api/erp/exams/${examId}/report-card/${studentId}`);
+}
+export async function getExamResults(examId: number, grade = "") {
+  const qs = grade ? `?grade=${encodeURIComponent(grade)}` : "";
+  return apiCall(`/api/erp/exams/${examId}/results${qs}`);
+}
 export async function getFeeHeads() { return apiCall("/api/erp/fee-heads"); }
 export async function getFeeStructures(params: { session_id?: number; grade?: string } = {}) {
   const qs = new URLSearchParams();

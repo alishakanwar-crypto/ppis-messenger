@@ -7,6 +7,7 @@ import AdminDashboard from "./pages/AdminDashboard";
 import ErpDashboard from "./pages/ErpDashboard";
 import Profile from "./pages/Profile";
 import FeesPage from "./pages/Fees";
+import ExamsPage from "./pages/Exams";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { token } = useAuth();
@@ -71,6 +72,7 @@ function AppRoutes() {
         }
       />
       <Route path="/erp/fees" element={<AdminRoute><FeesPage /></AdminRoute>} />
+      <Route path="/erp/exams" element={<AdminRoute><ExamsPage /></AdminRoute>} />
       <Route
         path="/profile"
         element={

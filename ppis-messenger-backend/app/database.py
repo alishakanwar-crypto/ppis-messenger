@@ -303,6 +303,44 @@ def init_db():
             invoice_id INTEGER NOT NULL REFERENCES erp_invoices(id), amount_paise INTEGER NOT NULL CHECK(amount_paise > 0), created_at TEXT NOT NULL
         );
         CREATE TABLE IF NOT EXISTS erp_document_counters (scope TEXT PRIMARY KEY, next_value INTEGER NOT NULL);
+        CREATE TABLE IF NOT EXISTS erp_exams (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id INTEGER REFERENCES erp_academic_sessions(id),
+            name TEXT NOT NULL,
+            term TEXT NOT NULL DEFAULT '',
+            grade TEXT NOT NULL DEFAULT '',
+            max_marks REAL NOT NULL DEFAULT 100,
+            exam_date TEXT NOT NULL DEFAULT '',
+            status TEXT NOT NULL DEFAULT 'scheduled',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS erp_exam_subjects (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            exam_id INTEGER NOT NULL REFERENCES erp_exams(id) ON DELETE CASCADE,
+            subject TEXT NOT NULL,
+            max_marks REAL NOT NULL DEFAULT 100,
+            pass_marks REAL NOT NULL DEFAULT 33,
+            created_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_erp_exam_subjects_exam
+            ON erp_exam_subjects(exam_id);
+        CREATE TABLE IF NOT EXISTS erp_exam_marks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            exam_id INTEGER NOT NULL REFERENCES erp_exams(id) ON DELETE CASCADE,
+            subject_id INTEGER NOT NULL REFERENCES erp_exam_subjects(id) ON DELETE CASCADE,
+            student_id INTEGER NOT NULL REFERENCES erp_students(id),
+            marks_obtained REAL,
+            is_absent INTEGER NOT NULL DEFAULT 0,
+            remarks TEXT NOT NULL DEFAULT '',
+            updated_by INTEGER REFERENCES users(id),
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_erp_exam_marks_subject_student
+            ON erp_exam_marks(subject_id, student_id);
+        CREATE INDEX IF NOT EXISTS idx_erp_exam_marks_exam
+            ON erp_exam_marks(exam_id);
     """)
     # Migrations: add columns that might be missing on existing databases
     try:
