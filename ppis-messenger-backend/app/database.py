@@ -308,6 +308,46 @@ def init_db():
             grade TEXT NOT NULL,
             PRIMARY KEY(user_id, grade)
         );
+        CREATE TABLE IF NOT EXISTS erp_transport_routes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            vehicle_number TEXT NOT NULL DEFAULT '',
+            driver_name TEXT NOT NULL DEFAULT '',
+            driver_phone TEXT NOT NULL DEFAULT '',
+            capacity INTEGER NOT NULL DEFAULT 0,
+            status TEXT NOT NULL DEFAULT 'active',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_erp_transport_route_status
+            ON erp_transport_routes(status);
+        CREATE TABLE IF NOT EXISTS erp_transport_stops (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            route_id INTEGER NOT NULL REFERENCES erp_transport_routes(id) ON DELETE CASCADE,
+            name TEXT NOT NULL,
+            stop_order INTEGER NOT NULL DEFAULT 0,
+            pickup_time TEXT NOT NULL DEFAULT '',
+            drop_time TEXT NOT NULL DEFAULT '',
+            monthly_fee_paise INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_erp_transport_stop_route
+            ON erp_transport_stops(route_id);
+        CREATE TABLE IF NOT EXISTS erp_transport_assignments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            student_id INTEGER NOT NULL REFERENCES erp_students(id),
+            route_id INTEGER NOT NULL REFERENCES erp_transport_routes(id),
+            stop_id INTEGER REFERENCES erp_transport_stops(id),
+            start_date TEXT NOT NULL DEFAULT '',
+            status TEXT NOT NULL DEFAULT 'active',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_erp_transport_active_student
+            ON erp_transport_assignments(student_id) WHERE status = 'active';
+        CREATE INDEX IF NOT EXISTS idx_erp_transport_assignment_route
+            ON erp_transport_assignments(route_id);
         CREATE TABLE IF NOT EXISTS erp_exams (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             session_id INTEGER REFERENCES erp_academic_sessions(id),

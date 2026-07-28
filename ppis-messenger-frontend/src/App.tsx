@@ -7,6 +7,7 @@ import AdminDashboard from "./pages/AdminDashboard";
 import ErpDashboard from "./pages/ErpDashboard";
 import Profile from "./pages/Profile";
 import FeesPage from "./pages/Fees";
+import TransportPage from "./pages/Transport";
 import ExamsPage from "./pages/Exams";
 import PortalPage from "./pages/Portal";
 import TeachersPage from "./pages/Teachers";
@@ -78,6 +79,7 @@ function AppRoutes() {
         }
       />
       <Route path="/erp/fees" element={<AdminRoute><FeesPage /></AdminRoute>} />
+      <Route path="/erp/transport" element={<AdminRoute><TransportPage /></AdminRoute>} />
       <Route path="/erp/exams" element={<AdminRoute><ExamsPage /></AdminRoute>} />
       <Route path="/erp/teachers" element={<AdminRoute><TeachersPage /></AdminRoute>} />
       <Route path="/portal" element={<ProtectedRoute><PortalPage /></ProtectedRoute>} />

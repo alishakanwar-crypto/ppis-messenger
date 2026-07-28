@@ -263,6 +263,12 @@ export default function ErpDashboard() {
             Fees &amp; payments
           </button>
           <button
+            onClick={() => navigate("/erp/transport")}
+            className="inline-flex items-center justify-center gap-2 rounded-xl border border-teal-200 bg-teal-50 px-4 py-2.5 text-sm font-semibold text-teal-700"
+          >
+            Transport
+          </button>
+          <button
             onClick={() => navigate("/erp/exams")}
             className="inline-flex items-center justify-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm font-semibold text-amber-700"
           >
