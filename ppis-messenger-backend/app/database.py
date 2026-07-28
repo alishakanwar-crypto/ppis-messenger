@@ -68,7 +68,7 @@ TEACHER_DATA = [
     {"name": "Priyanka Budhiraja / Geet", "grade": "Popsicles", "email": "priyanka.budhiraja@ppischool.in", "phone": "9818704015"},
 ]
 
-ADMIN_NUMBERS = ["9971166562", "9910034550", "9599488106", "8076455224"]
+ADMIN_NUMBERS = ["9971166562", "9910034550", "9599488106", "8076455224", "9599488105"]
 
 
 def get_db() -> sqlite3.Connection:

@@ -47,6 +47,9 @@ class LoginPinRequest(BaseModel):
     phone: str
     pin: str
 
+class LoginStatusRequest(BaseModel):
+    phone: str
+
 
 # ---- Helpers ----
 
@@ -228,6 +231,77 @@ async def request_otp(body: PhoneRequest):
     conn.close()
 
     return {"success": True, "message": "Demo OTP created", "otp_preview": code}
+
+
+@router.post("/login-status")
+async def login_status(body: LoginStatusRequest):
+    """Report whether a phone is allow-listed and has completed PIN setup."""
+    phone = _normalize_phone(body.phone)
+    conn = get_db()
+    user = conn.execute(
+        "SELECT pin_hash FROM users WHERE phone = ?", (phone,)
+    ).fetchone()
+    conn.close()
+    return {
+        "authorized": phone in ADMIN_NUMBERS,
+        "has_pin": bool(user and user["pin_hash"]),
+    }
+
+
+@router.post("/setup-pin")
+async def setup_pin(body: LoginPinRequest):
+    """Allow an authorized phone to create its first passcode and log in."""
+    phone = _normalize_phone(body.phone)
+    if phone not in ADMIN_NUMBERS:
+        raise HTTPException(
+            status_code=403,
+            detail="This number is not authorized to access the ERP",
+        )
+    if len(body.pin) < PIN_MIN_LENGTH:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Passcode must be at least {PIN_MIN_LENGTH} characters",
+        )
+
+    conn = get_db()
+    conn.execute("BEGIN IMMEDIATE")
+    user = conn.execute(
+        "SELECT * FROM users WHERE phone = ?", (phone,)
+    ).fetchone()
+    if user and user["pin_hash"]:
+        conn.close()
+        raise HTTPException(
+            status_code=400,
+            detail="Passcode already set. Please log in.",
+        )
+
+    if not user:
+        conn.execute(
+            "INSERT INTO users (phone, name, role) VALUES (?, ?, ?)",
+            (phone, "", "admin"),
+        )
+    elif user["role"] != "admin":
+        conn.execute(
+            "UPDATE users SET role = 'admin' WHERE id = ?", (user["id"],)
+        )
+
+    conn.execute(
+        "UPDATE users SET pin_hash = ? WHERE phone = ?",
+        (_hash_pin(body.pin), phone),
+    )
+    conn.commit()
+    user = conn.execute(
+        "SELECT * FROM users WHERE phone = ?", (phone,)
+    ).fetchone()
+    _failed_pin_attempts.pop(phone, None)
+    token = create_token(user["id"], user["role"], phone)
+    conn.close()
+
+    return {
+        "success": True,
+        "token": token,
+        "user": _build_user_response(user),
+    }
 
 
 @router.post("/verify-otp")

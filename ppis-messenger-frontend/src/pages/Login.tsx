@@ -1,19 +1,22 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { requestOtp, verifyOtp, loginPin } from "../lib/api";
+import { requestOtp, verifyOtp, loginPin, loginStatus, setupPin } from "../lib/api";
 import { useAuth, type User } from "../lib/auth";
 import StudentAvatar from "../components/StudentAvatar";
 
 type Step = "phone" | "otp" | "pin" | "success";
+type PinStage = "phone" | "login" | "setup";
 
 const PIN_ONLY_AUTH = import.meta.env.VITE_PIN_ONLY_AUTH === "true";
 const PIN_MIN_LENGTH = Number(import.meta.env.VITE_PIN_MIN_LENGTH || "8");
 
 export default function Login() {
   const [step, setStep] = useState<Step>(PIN_ONLY_AUTH ? "pin" : "phone");
+  const [pinStage, setPinStage] = useState<PinStage>(PIN_ONLY_AUTH ? "phone" : "login");
   const [phone, setPhone] = useState("");
   const [otp, setOtp] = useState("");
   const [pin, setPin] = useState("");
+  const [confirmPin, setConfirmPin] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [otpMessage, setOtpMessage] = useState("");
@@ -81,6 +84,57 @@ export default function Login() {
     }
   };
 
+  const handlePinContinue = async () => {
+    setError("");
+    setLoading(true);
+    try {
+      const data = await loginStatus(phone);
+      if (!data.authorized) {
+        setError("This number isn't authorized to access the ERP. Please contact the school admin.");
+        return;
+      }
+      setHasPin(data.has_pin);
+      setPinStage(data.has_pin ? "login" : "setup");
+      setPin("");
+      setConfirmPin("");
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Unable to check this phone number");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePinSetup = async () => {
+    setError("");
+    if (pin.length < PIN_MIN_LENGTH) {
+      setError(`Passcode must be at least ${PIN_MIN_LENGTH} characters`);
+      return;
+    }
+    if (pin !== confirmPin) {
+      setError("Passcodes do not match");
+      return;
+    }
+    setLoading(true);
+    try {
+      const data = await setupPin(phone, pin);
+      login(data.token, data.user);
+      navigate("/");
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Unable to set passcode");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const resetPinFlow = () => {
+    setPhone("");
+    setPin("");
+    setConfirmPin("");
+    setHasPin(false);
+    setError("");
+    setPinStage("phone");
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-600 to-indigo-800 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-8">
@@ -129,7 +183,7 @@ export default function Login() {
               </button>
             )}
             <button
-              onClick={() => { setHasPin(true); setStep("pin"); }}
+              onClick={() => { setHasPin(true); setPinStage("login"); setStep("pin"); }}
               className="w-full text-sm text-blue-600 hover:underline"
             >
               Already have a PIN? Login with PIN
@@ -211,7 +265,7 @@ export default function Login() {
           </div>
         )}
 
-        {step === "pin" && (
+        {step === "pin" && PIN_ONLY_AUTH && pinStage === "phone" && (
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Phone Number</label>
@@ -220,9 +274,38 @@ export default function Login() {
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
                 placeholder="Enter your phone number"
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-lg"
+                autoFocus
               />
             </div>
+            <button
+              onClick={handlePinContinue}
+              disabled={loading || phone.length < 10}
+              className="w-full py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
+            >
+              {loading ? "Checking..." : "Continue"}
+            </button>
+          </div>
+        )}
+
+        {step === "pin" && (!PIN_ONLY_AUTH || pinStage === "login") && (
+          <div className="space-y-4">
+            {!PIN_ONLY_AUTH ? (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Phone Number</label>
+                <input
+                  type="tel"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  placeholder="Enter your phone number"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+            ) : (
+              <p className="text-sm text-gray-500">
+                Signing in with <span className="font-medium text-gray-700">{phone}</span>
+              </p>
+            )}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Admin passcode</label>
               <input
@@ -250,6 +333,58 @@ export default function Login() {
                 Login with OTP instead
               </button>
             )}
+            {PIN_ONLY_AUTH && (
+              <button
+                onClick={resetPinFlow}
+                className="w-full text-sm text-gray-500 hover:underline"
+              >
+                Change phone number
+              </button>
+            )}
+          </div>
+        )}
+
+        {step === "pin" && PIN_ONLY_AUTH && pinStage === "setup" && (
+          <div className="space-y-4">
+            <p className="text-sm text-gray-600">
+              First-time setup — choose a passcode you'll use to log in.
+            </p>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Create your passcode</label>
+              <input
+                type="password"
+                value={pin}
+                onChange={(e) => setPin(e.target.value)}
+                placeholder={`${PIN_MIN_LENGTH}–12 characters`}
+                maxLength={12}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-center text-2xl tracking-widest"
+                autoFocus
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Confirm your passcode</label>
+              <input
+                type="password"
+                value={confirmPin}
+                onChange={(e) => setConfirmPin(e.target.value)}
+                placeholder="Re-enter your passcode"
+                maxLength={12}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-center text-2xl tracking-widest"
+              />
+            </div>
+            <button
+              onClick={handlePinSetup}
+              disabled={loading || pin.length < PIN_MIN_LENGTH || confirmPin.length < PIN_MIN_LENGTH}
+              className="w-full py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
+            >
+              {loading ? "Setting passcode..." : "Set passcode & log in"}
+            </button>
+            <button
+              onClick={resetPinFlow}
+              className="w-full text-sm text-gray-500 hover:underline"
+            >
+              Change phone number
+            </button>
           </div>
         )}
       </div>

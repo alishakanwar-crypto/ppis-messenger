@@ -1,3 +1,5 @@
+import type { User } from "./auth";
+
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8001";
 
 function getToken(): string | null {
@@ -28,6 +30,17 @@ async function apiCall(path: string, options: RequestInit = {}) {
 }
 
 // Auth
+export interface LoginStatusResponse {
+  authorized: boolean;
+  has_pin: boolean;
+}
+
+export interface PinAuthResponse {
+  success: boolean;
+  token: string;
+  user: User;
+}
+
 export async function requestOtp(phone: string) {
   return apiCall("/api/auth/request-otp", {
     method: "POST",
@@ -49,7 +62,21 @@ export async function setPin(pin: string) {
   });
 }
 
-export async function loginPin(phone: string, pin: string) {
+export async function loginStatus(phone: string): Promise<LoginStatusResponse> {
+  return apiCall("/api/auth/login-status", {
+    method: "POST",
+    body: JSON.stringify({ phone }),
+  });
+}
+
+export async function setupPin(phone: string, pin: string): Promise<PinAuthResponse> {
+  return apiCall("/api/auth/setup-pin", {
+    method: "POST",
+    body: JSON.stringify({ phone, pin }),
+  });
+}
+
+export async function loginPin(phone: string, pin: string): Promise<PinAuthResponse> {
   return apiCall("/api/auth/login-pin", {
     method: "POST",
     body: JSON.stringify({ phone, pin }),
