@@ -444,6 +444,45 @@ def init_db():
             ON erp_homework(grade);
         CREATE INDEX IF NOT EXISTS idx_erp_homework_due_date
             ON erp_homework(due_date);
+        CREATE TABLE IF NOT EXISTS erp_staff (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            employee_code TEXT NOT NULL DEFAULT '',
+            full_name TEXT NOT NULL,
+            role TEXT NOT NULL DEFAULT '',
+            department TEXT NOT NULL DEFAULT '',
+            phone TEXT NOT NULL DEFAULT '',
+            email TEXT NOT NULL DEFAULT '',
+            date_of_joining TEXT NOT NULL DEFAULT '',
+            monthly_ctc_paise INTEGER NOT NULL DEFAULT 0,
+            status TEXT NOT NULL DEFAULT 'active',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_erp_staff_employee_code
+            ON erp_staff(employee_code) WHERE employee_code != '';
+        CREATE INDEX IF NOT EXISTS idx_erp_staff_status ON erp_staff(status);
+        CREATE INDEX IF NOT EXISTS idx_erp_staff_department ON erp_staff(department);
+        CREATE TABLE IF NOT EXISTS erp_payroll_runs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            month TEXT NOT NULL UNIQUE,
+            status TEXT NOT NULL DEFAULT 'draft',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            finalized_at TEXT
+        );
+        CREATE TABLE IF NOT EXISTS erp_payslips (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id INTEGER NOT NULL REFERENCES erp_payroll_runs(id) ON DELETE CASCADE,
+            staff_id INTEGER NOT NULL REFERENCES erp_staff(id),
+            gross_paise INTEGER NOT NULL DEFAULT 0,
+            deductions_paise INTEGER NOT NULL DEFAULT 0,
+            net_paise INTEGER NOT NULL DEFAULT 0,
+            remarks TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_erp_payslip_run_staff
+            ON erp_payslips(run_id, staff_id);
     """)
     # Migrations: add columns that might be missing on existing databases
     try:

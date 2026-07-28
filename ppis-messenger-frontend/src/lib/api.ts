@@ -551,6 +551,78 @@ export async function updateHomework(homeworkId: number, body: Partial<{
 export async function deleteHomework(homeworkId: number) {
   return apiCall(`/api/erp/homework/${homeworkId}`, { method: "DELETE" });
 }
+export interface StaffMember {
+  id: number;
+  employee_code: string;
+  full_name: string;
+  role: string;
+  department: string;
+  phone: string;
+  email: string;
+  date_of_joining: string;
+  monthly_ctc: number;
+  status: "active" | "inactive";
+}
+export async function listStaff(params: { status?: string; department?: string; search?: string; page?: number; limit?: number } = {}) {
+  const qs = new URLSearchParams();
+  if (params.status) qs.set("status", params.status);
+  if (params.department) qs.set("department", params.department);
+  if (params.search) qs.set("search", params.search);
+  if (params.page) qs.set("page", String(params.page));
+  if (params.limit) qs.set("limit", String(params.limit));
+  return apiCall(`/api/erp/staff?${qs}`);
+}
+export async function getStaff(staffId: number) { return apiCall(`/api/erp/staff/${staffId}`); }
+export async function createStaff(body: {
+  full_name: string; role?: string; department?: string; phone?: string; email?: string;
+  date_of_joining?: string; monthly_ctc?: number; status?: StaffMember["status"];
+}) {
+  return apiCall("/api/erp/staff", { method: "POST", body: JSON.stringify(body) });
+}
+export async function updateStaff(staffId: number, body: Partial<{
+  full_name: string; role: string; department: string; phone: string; email: string;
+  date_of_joining: string; monthly_ctc: number; status: StaffMember["status"];
+}>) {
+  return apiCall(`/api/erp/staff/${staffId}`, { method: "PUT", body: JSON.stringify(body) });
+}
+export async function getStaffSummary() { return apiCall("/api/erp/staff/summary"); }
+export interface PayrollRun {
+  id: number;
+  month: string;
+  status: "draft" | "finalized";
+  payslip_count?: number;
+  total_net?: number;
+  payslips?: Payslip[];
+  total_gross?: number;
+  total_deductions?: number;
+}
+export interface Payslip {
+  id: number;
+  run_id: number;
+  staff_id: number;
+  full_name: string;
+  employee_code: string;
+  role?: string;
+  department?: string;
+  gross: number;
+  deductions: number;
+  net: number;
+  remarks: string;
+}
+export async function listPayrollRuns() { return apiCall("/api/erp/payroll"); }
+export async function createPayrollRun(month: string) {
+  return apiCall("/api/erp/payroll", { method: "POST", body: JSON.stringify({ month }) });
+}
+export async function generatePayroll(runId: number) {
+  return apiCall(`/api/erp/payroll/${runId}/generate`, { method: "POST" });
+}
+export async function getPayrollRun(runId: number) { return apiCall(`/api/erp/payroll/${runId}`); }
+export async function updatePayslip(payslipId: number, body: { gross: number; deductions: number; remarks?: string }) {
+  return apiCall(`/api/erp/payroll/payslips/${payslipId}`, { method: "PUT", body: JSON.stringify(body) });
+}
+export async function finalizePayroll(runId: number) {
+  return apiCall(`/api/erp/payroll/${runId}/finalize`, { method: "POST" });
+}
 export async function getFeeHeads() { return apiCall("/api/erp/fee-heads"); }
 export async function getFeeStructures(params: { session_id?: number; grade?: string } = {}) {
   const qs = new URLSearchParams();
