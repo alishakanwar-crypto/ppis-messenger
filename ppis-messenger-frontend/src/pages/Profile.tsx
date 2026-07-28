@@ -184,7 +184,7 @@ export default function Profile() {
           Logout
         </button>
 
-        <p className="text-center text-xs text-gray-400 pb-4">PPIS Messenger v1.0</p>
+        <p className="text-center text-xs text-gray-400 pb-4">PPIS Campus Care v1.0</p>
       </div>
     </div>
   );

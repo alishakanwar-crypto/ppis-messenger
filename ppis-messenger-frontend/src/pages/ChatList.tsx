@@ -91,7 +91,7 @@ export default function ChatList() {
             </div>
           ) : null}
           <div>
-            <h1 className="text-lg font-bold">PPIS Messenger</h1>
+            <h1 className="text-lg font-bold">PPIS Campus Care</h1>
             <p className="text-xs text-blue-200">
               {user?.children && user.children.length > 0
                 ? user.children.map(c => c.name).join(", ")
