@@ -295,7 +295,7 @@ async def request_setup_code(body: PhoneRequest):
         )
     _setup_code_requests.setdefault(phone, []).append(time.monotonic())
 
-    code = f"{random.randint(100000, 999999)}"
+    code = f"{secrets.randbelow(900000) + 100000}"
     expires_at = (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat()
     conn = get_db()
     conn.execute(
@@ -326,6 +326,10 @@ async def setup_pin(body: SetupPinRequest):
             status_code=400,
             detail=f"Passcode must be at least {PIN_MIN_LENGTH} characters",
         )
+    if len(_recent_pin_failures(phone)) >= LOGIN_MAX_FAILURES:
+        raise HTTPException(
+            status_code=429, detail="Too many failed attempts. Try again later."
+        )
 
     conn = get_db()
     conn.execute("BEGIN IMMEDIATE")
@@ -337,6 +341,7 @@ async def setup_pin(body: SetupPinRequest):
         (phone, now),
     ).fetchone()
     if not otp or otp["code"] != body.code:
+        _record_pin_failure(phone)
         conn.close()
         raise HTTPException(status_code=400, detail="Invalid or expired code")
     conn.execute("UPDATE otp_codes SET used = 1 WHERE id = ?", (otp["id"],))

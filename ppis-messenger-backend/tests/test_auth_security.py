@@ -218,6 +218,110 @@ class AuthSecurityTests(unittest.TestCase):
         self.assertTrue(auth._verify_pin("new-passcode", user["pin_hash"]))
         self.assertFalse(auth._verify_pin("old-passcode", user["pin_hash"]))
 
+    def test_setup_pin_wrong_codes_are_throttled(self):
+        async def fake_send(phone, code):
+            return True
+
+        auth.send_login_code = fake_send
+        asyncio.run(
+            auth.request_setup_code(auth.PhoneRequest(phone="9599488105"))
+        )
+        conn = database.get_db()
+        otp = conn.execute(
+            "SELECT code FROM otp_codes WHERE phone = ? ORDER BY id DESC LIMIT 1",
+            ("9599488105",),
+        ).fetchone()
+        conn.close()
+        wrong_code = "000000" if otp["code"] != "000000" else "111111"
+        for _ in range(auth.LOGIN_MAX_FAILURES):
+            with self.assertRaises(HTTPException) as context:
+                asyncio.run(
+                    auth.setup_pin(
+                        auth.SetupPinRequest(
+                            phone="9599488105",
+                            code=wrong_code,
+                            pin="secure-passcode",
+                        )
+                    )
+                )
+            self.assertEqual(context.exception.status_code, 400)
+
+        with self.assertRaises(HTTPException) as context:
+            asyncio.run(
+                auth.setup_pin(
+                    auth.SetupPinRequest(
+                        phone="9599488105",
+                        code=wrong_code,
+                        pin="secure-passcode",
+                    )
+                )
+            )
+        self.assertEqual(context.exception.status_code, 429)
+        self.assertEqual(
+            context.exception.detail, "Too many failed attempts. Try again later."
+        )
+
+    def test_setup_pin_success_resets_wrong_code_throttle(self):
+        async def fake_send(phone, code):
+            return True
+
+        auth.send_login_code = fake_send
+        phone = "9599488105"
+        asyncio.run(auth.request_setup_code(auth.PhoneRequest(phone=phone)))
+        conn = database.get_db()
+        otp = conn.execute(
+            "SELECT code FROM otp_codes WHERE phone = ? ORDER BY id DESC LIMIT 1",
+            (phone,),
+        ).fetchone()
+        conn.close()
+
+        for _ in range(auth.LOGIN_MAX_FAILURES - 1):
+            with self.assertRaises(HTTPException) as context:
+                asyncio.run(
+                    auth.setup_pin(
+                        auth.SetupPinRequest(
+                            phone=phone,
+                            code="654321",
+                            pin="secure-passcode",
+                        )
+                    )
+                )
+            self.assertEqual(context.exception.status_code, 400)
+
+        result = asyncio.run(
+            auth.setup_pin(
+                auth.SetupPinRequest(
+                    phone=phone,
+                    code=otp["code"],
+                    pin="secure-passcode",
+                )
+            )
+        )
+        self.assertTrue(result["success"])
+        self.assertNotIn(phone, auth._failed_pin_attempts)
+
+        asyncio.run(auth.request_setup_code(auth.PhoneRequest(phone=phone)))
+        conn = database.get_db()
+        next_otp = conn.execute(
+            "SELECT code FROM otp_codes WHERE phone = ? ORDER BY id DESC LIMIT 1",
+            (phone,),
+        ).fetchone()
+        conn.close()
+        wrong_code = "000000" if next_otp["code"] != "000000" else "111111"
+        with self.assertRaises(HTTPException) as context:
+            asyncio.run(
+                auth.setup_pin(
+                    auth.SetupPinRequest(
+                        phone=phone,
+                        code=wrong_code,
+                        pin="secure-passcode",
+                    )
+                )
+            )
+        self.assertEqual(context.exception.status_code, 400)
+        self.assertTrue(next_otp["code"])
+        self.assertEqual(len(auth._failed_pin_attempts[phone]), 1)
+
     def test_setup_pin_rejects_wrong_or_expired_code(self):
         conn = database.get_db()
         conn.execute(
