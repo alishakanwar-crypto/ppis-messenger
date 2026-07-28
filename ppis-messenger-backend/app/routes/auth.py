@@ -15,6 +15,7 @@ from jose import JWTError, jwt
 from pydantic import BaseModel
 
 from app.database import get_db, ADMIN_NUMBERS
+from app.services.whatsapp import send_login_code
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -28,7 +29,12 @@ ADMIN_BOOTSTRAP_PHONE = os.environ.get("ADMIN_BOOTSTRAP_PHONE", "")
 ADMIN_BOOTSTRAP_PIN = os.environ.get("ADMIN_BOOTSTRAP_PIN", "")
 LOGIN_MAX_FAILURES = int(os.environ.get("LOGIN_MAX_FAILURES", "5"))
 LOGIN_WINDOW_SECONDS = int(os.environ.get("LOGIN_WINDOW_SECONDS", "900"))
+SETUP_CODE_MAX_REQUESTS = 3
+SETUP_CODE_WINDOW_SECONDS = 900
+LOGIN_STATUS_MAX_REQUESTS = 20
 _failed_pin_attempts: dict[str, list[float]] = {}
+_setup_code_requests: dict[str, list[float]] = {}
+_login_status_requests: dict[str, list[float]] = {}
 
 
 # ---- Models ----
@@ -49,6 +55,11 @@ class LoginPinRequest(BaseModel):
 
 class LoginStatusRequest(BaseModel):
     phone: str
+
+class SetupPinRequest(BaseModel):
+    phone: str
+    code: str
+    pin: str
 
 
 # ---- Helpers ----
@@ -140,6 +151,18 @@ def _record_pin_failure(phone: str) -> None:
     attempts = _recent_pin_failures(phone)
     attempts.append(time.monotonic())
     _failed_pin_attempts[phone] = attempts
+
+
+def _recent_requests(
+    requests: dict[str, list[float]], phone: str, window_seconds: int
+) -> list[float]:
+    cutoff = time.monotonic() - window_seconds
+    recent = [attempt for attempt in requests.get(phone, []) if attempt > cutoff]
+    if recent:
+        requests[phone] = recent
+    else:
+        requests.pop(phone, None)
+    return recent
 
 
 def bootstrap_admin_pin() -> None:
@@ -237,6 +260,13 @@ async def request_otp(body: PhoneRequest):
 async def login_status(body: LoginStatusRequest):
     """Report whether a phone is allow-listed and has completed PIN setup."""
     phone = _normalize_phone(body.phone)
+    if len(_recent_requests(
+        _login_status_requests, phone, SETUP_CODE_WINDOW_SECONDS
+    )) >= LOGIN_STATUS_MAX_REQUESTS:
+        raise HTTPException(
+            status_code=429, detail="Too many requests. Try again later."
+        )
+    _login_status_requests.setdefault(phone, []).append(time.monotonic())
     conn = get_db()
     user = conn.execute(
         "SELECT pin_hash FROM users WHERE phone = ?", (phone,)
@@ -248,9 +278,43 @@ async def login_status(body: LoginStatusRequest):
     }
 
 
+@router.post("/request-setup-code")
+async def request_setup_code(body: PhoneRequest):
+    """Send a one-time WhatsApp code for first-run or reset enrollment."""
+    phone = _normalize_phone(body.phone)
+    if phone not in ADMIN_NUMBERS:
+        raise HTTPException(
+            status_code=403,
+            detail="This number is not authorized to access the ERP",
+        )
+    if len(_recent_requests(
+        _setup_code_requests, phone, SETUP_CODE_WINDOW_SECONDS
+    )) >= SETUP_CODE_MAX_REQUESTS:
+        raise HTTPException(
+            status_code=429, detail="Too many requests. Try again later."
+        )
+    _setup_code_requests.setdefault(phone, []).append(time.monotonic())
+
+    code = f"{random.randint(100000, 999999)}"
+    expires_at = (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat()
+    conn = get_db()
+    conn.execute(
+        "INSERT INTO otp_codes (phone, code, expires_at) VALUES (?, ?, ?)",
+        (phone, code, expires_at),
+    )
+    conn.commit()
+    conn.close()
+
+    if not await send_login_code(phone, code):
+        raise HTTPException(
+            status_code=502, detail="Unable to send login code. Try again later."
+        )
+    return {"success": True}
+
+
 @router.post("/setup-pin")
-async def setup_pin(body: LoginPinRequest):
-    """Allow an authorized phone to create its first passcode and log in."""
+async def setup_pin(body: SetupPinRequest):
+    """Verify ownership, set or reset a passcode, and log the user in."""
     phone = _normalize_phone(body.phone)
     if phone not in ADMIN_NUMBERS:
         raise HTTPException(
@@ -265,16 +329,21 @@ async def setup_pin(body: LoginPinRequest):
 
     conn = get_db()
     conn.execute("BEGIN IMMEDIATE")
+    now = datetime.now(timezone.utc).isoformat()
+    otp = conn.execute(
+        """SELECT id, code FROM otp_codes
+           WHERE phone = ? AND used = 0 AND expires_at > ?
+           ORDER BY id DESC LIMIT 1""",
+        (phone, now),
+    ).fetchone()
+    if not otp or otp["code"] != body.code:
+        conn.close()
+        raise HTTPException(status_code=400, detail="Invalid or expired code")
+    conn.execute("UPDATE otp_codes SET used = 1 WHERE id = ?", (otp["id"],))
+
     user = conn.execute(
         "SELECT * FROM users WHERE phone = ?", (phone,)
     ).fetchone()
-    if user and user["pin_hash"]:
-        conn.close()
-        raise HTTPException(
-            status_code=400,
-            detail="Passcode already set. Please log in.",
-        )
-
     if not user:
         conn.execute(
             "INSERT INTO users (phone, name, role) VALUES (?, ?, ?)",

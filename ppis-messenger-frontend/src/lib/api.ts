@@ -69,10 +69,17 @@ export async function loginStatus(phone: string): Promise<LoginStatusResponse> {
   });
 }
 
-export async function setupPin(phone: string, pin: string): Promise<PinAuthResponse> {
+export async function requestSetupCode(phone: string): Promise<{ success: boolean }> {
+  return apiCall("/api/auth/request-setup-code", {
+    method: "POST",
+    body: JSON.stringify({ phone }),
+  });
+}
+
+export async function setupPin(phone: string, code: string, pin: string): Promise<PinAuthResponse> {
   return apiCall("/api/auth/setup-pin", {
     method: "POST",
-    body: JSON.stringify({ phone, pin }),
+    body: JSON.stringify({ phone, code, pin }),
   });
 }
 
