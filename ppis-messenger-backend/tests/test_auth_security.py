@@ -274,6 +274,7 @@ class AuthSecurityTests(unittest.TestCase):
             (phone,),
         ).fetchone()
         conn.close()
+        wrong_code = "000000" if otp["code"] != "000000" else "111111"
 
         for _ in range(auth.LOGIN_MAX_FAILURES - 1):
             with self.assertRaises(HTTPException) as context:
@@ -281,7 +282,7 @@ class AuthSecurityTests(unittest.TestCase):
                     auth.setup_pin(
                         auth.SetupPinRequest(
                             phone=phone,
-                            code="654321",
+                            code=wrong_code,
                             pin="secure-passcode",
                         )
                     )
