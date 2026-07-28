@@ -477,6 +477,80 @@ export async function convertAdmission(admissionId: number) {
 export async function getAdmissionsSummary() {
   return apiCall("/api/erp/admissions/summary");
 }
+export interface TimetableSlot {
+  id: number;
+  session_id?: number | null;
+  grade: string;
+  day_of_week: number;
+  period: number;
+  subject: string;
+  teacher: string;
+  start_time: string;
+  end_time: string;
+  room: string;
+}
+export async function getTimetable(params: { session_id?: number; grade?: string } = {}) {
+  const qs = new URLSearchParams();
+  if (params.session_id) qs.set("session_id", String(params.session_id));
+  if (params.grade) qs.set("grade", params.grade);
+  return apiCall(`/api/erp/timetable?${qs}`);
+}
+export async function saveTimetableSlot(body: Omit<TimetableSlot, "id">) {
+  return apiCall("/api/erp/timetable/slots", { method: "POST", body: JSON.stringify(body) });
+}
+export async function saveTimetableBulk(body: { session_id?: number; grade: string; slots: Array<Omit<TimetableSlot, "id" | "session_id" | "grade">> }) {
+  return apiCall("/api/erp/timetable/bulk", { method: "POST", body: JSON.stringify(body) });
+}
+export async function deleteTimetableSlot(slotId: number) {
+  return apiCall(`/api/erp/timetable/slots/${slotId}`, { method: "DELETE" });
+}
+export interface Homework {
+  id: number;
+  session_id?: number | null;
+  grade: string;
+  subject: string;
+  title: string;
+  description: string;
+  assigned_date: string;
+  due_date: string;
+  status: "open" | "closed";
+  assigned_by_name?: string;
+}
+export async function listHomework(params: { session_id?: number; grade?: string; status?: string; from?: string; to?: string } = {}) {
+  const qs = new URLSearchParams();
+  if (params.session_id) qs.set("session_id", String(params.session_id));
+  if (params.grade) qs.set("grade", params.grade);
+  if (params.status) qs.set("status", params.status);
+  if (params.from) qs.set("from", params.from);
+  if (params.to) qs.set("to", params.to);
+  return apiCall(`/api/erp/homework?${qs}`);
+}
+export async function createHomework(body: {
+  session_id?: number;
+  grade: string;
+  subject?: string;
+  title: string;
+  description?: string;
+  assigned_date: string;
+  due_date?: string;
+}) {
+  return apiCall("/api/erp/homework", { method: "POST", body: JSON.stringify(body) });
+}
+export async function updateHomework(homeworkId: number, body: Partial<{
+  session_id: number;
+  grade: string;
+  subject: string;
+  title: string;
+  description: string;
+  assigned_date: string;
+  due_date: string;
+  status: Homework["status"];
+}>) {
+  return apiCall(`/api/erp/homework/${homeworkId}`, { method: "PUT", body: JSON.stringify(body) });
+}
+export async function deleteHomework(homeworkId: number) {
+  return apiCall(`/api/erp/homework/${homeworkId}`, { method: "DELETE" });
+}
 export async function getFeeHeads() { return apiCall("/api/erp/fee-heads"); }
 export async function getFeeStructures(params: { session_id?: number; grade?: string } = {}) {
   const qs = new URLSearchParams();

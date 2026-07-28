@@ -408,6 +408,42 @@ def init_db():
         CREATE UNIQUE INDEX IF NOT EXISTS idx_erp_admission_application_number
             ON erp_admission_enquiries(application_number)
             WHERE application_number != '';
+        CREATE TABLE IF NOT EXISTS erp_timetable_slots (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id INTEGER REFERENCES erp_academic_sessions(id),
+            grade TEXT NOT NULL,
+            day_of_week INTEGER NOT NULL,
+            period INTEGER NOT NULL,
+            subject TEXT NOT NULL DEFAULT '',
+            teacher TEXT NOT NULL DEFAULT '',
+            start_time TEXT NOT NULL DEFAULT '',
+            end_time TEXT NOT NULL DEFAULT '',
+            room TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_erp_timetable_slot_unique
+            ON erp_timetable_slots(session_id, grade, day_of_week, period);
+        CREATE INDEX IF NOT EXISTS idx_erp_timetable_slot_grade
+            ON erp_timetable_slots(grade);
+        CREATE TABLE IF NOT EXISTS erp_homework (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id INTEGER REFERENCES erp_academic_sessions(id),
+            grade TEXT NOT NULL,
+            subject TEXT NOT NULL DEFAULT '',
+            title TEXT NOT NULL,
+            description TEXT NOT NULL DEFAULT '',
+            assigned_date TEXT NOT NULL,
+            due_date TEXT NOT NULL DEFAULT '',
+            assigned_by INTEGER REFERENCES users(id),
+            status TEXT NOT NULL DEFAULT 'open',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_erp_homework_grade
+            ON erp_homework(grade);
+        CREATE INDEX IF NOT EXISTS idx_erp_homework_due_date
+            ON erp_homework(due_date);
     """)
     # Migrations: add columns that might be missing on existing databases
     try:
