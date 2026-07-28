@@ -286,6 +286,12 @@ export default function ErpDashboard() {
           >
             Admissions
           </button>
+          <button
+            onClick={() => navigate("/erp/timetable")}
+            className="inline-flex items-center justify-center gap-2 rounded-xl border border-sky-200 bg-sky-50 px-4 py-2.5 text-sm font-semibold text-sky-700"
+          >
+            Timetable &amp; Homework
+          </button>
         </section>
 
         <section className="mb-7 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
