@@ -50,6 +50,94 @@ class AuthSecurityTests(unittest.TestCase):
             asyncio.run(auth.request_otp(auth.PhoneRequest(phone="9000000000")))
         self.assertEqual(context.exception.status_code, 404)
 
+    def test_login_status_reports_allow_list_and_pin_state(self):
+        new_admin = asyncio.run(
+            auth.login_status(auth.LoginStatusRequest(phone="9599488105"))
+        )
+        self.assertEqual(new_admin, {"authorized": True, "has_pin": False})
+
+        conn = database.get_db()
+        conn.execute(
+            "UPDATE users SET pin_hash = ? WHERE phone = ?",
+            (auth._hash_pin("secure-passcode"), "8076455224"),
+        )
+        conn.commit()
+        conn.close()
+
+        configured_admin = asyncio.run(
+            auth.login_status(auth.LoginStatusRequest(phone="8076455224"))
+        )
+        self.assertEqual(configured_admin, {"authorized": True, "has_pin": True})
+
+        unauthorized = asyncio.run(
+            auth.login_status(auth.LoginStatusRequest(phone="9000000000"))
+        )
+        self.assertEqual(unauthorized, {"authorized": False, "has_pin": False})
+
+    def test_setup_pin_creates_admin_and_logs_in(self):
+        result = asyncio.run(
+            auth.setup_pin(
+                auth.LoginPinRequest(phone="9599488105", pin="secure-passcode")
+            )
+        )
+        self.assertTrue(result["success"])
+        self.assertTrue(result["token"])
+        self.assertEqual(result["user"]["phone"], "9599488105")
+        self.assertEqual(result["user"]["role"], "admin")
+        self.assertTrue(result["user"]["has_pin"])
+
+        conn = database.get_db()
+        user = conn.execute(
+            "SELECT role, pin_hash FROM users WHERE phone = ?", ("9599488105",)
+        ).fetchone()
+        conn.close()
+        self.assertEqual(user["role"], "admin")
+        self.assertTrue(user["pin_hash"])
+
+    def test_setup_pin_rejects_unauthorized_phone(self):
+        with self.assertRaises(HTTPException) as context:
+            asyncio.run(
+                auth.setup_pin(
+                    auth.LoginPinRequest(phone="9000000000", pin="secure-passcode")
+                )
+            )
+        self.assertEqual(context.exception.status_code, 403)
+        self.assertEqual(
+            context.exception.detail,
+            "This number is not authorized to access the ERP",
+        )
+
+    def test_setup_pin_rejects_existing_pin(self):
+        asyncio.run(
+            auth.setup_pin(
+                auth.LoginPinRequest(phone="9599488105", pin="secure-passcode")
+            )
+        )
+        with self.assertRaises(HTTPException) as context:
+            asyncio.run(
+                auth.setup_pin(
+                    auth.LoginPinRequest(phone="9599488105", pin="another-passcode")
+                )
+            )
+        self.assertEqual(context.exception.status_code, 400)
+        self.assertEqual(
+            context.exception.detail,
+            "Passcode already set. Please log in.",
+        )
+
+    def test_setup_pin_rejects_short_pin(self):
+        with self.assertRaises(HTTPException) as context:
+            asyncio.run(
+                auth.setup_pin(
+                    auth.LoginPinRequest(phone="9599488105", pin="short")
+                )
+            )
+        self.assertEqual(context.exception.status_code, 400)
+        self.assertEqual(
+            context.exception.detail,
+            f"Passcode must be at least {auth.PIN_MIN_LENGTH} characters",
+        )
+
     def test_bootstrap_admin_passcode_and_throttle_failed_logins(self):
         conn = database.get_db()
         admin = conn.execute(
