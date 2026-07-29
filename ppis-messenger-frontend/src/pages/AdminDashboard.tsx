@@ -168,7 +168,13 @@ export default function AdminDashboard() {
     setBcResult("");
     try {
       const data = await sendBroadcast(bcTitle.trim(), bcContent.trim(), bcGrades);
-      setBcResult(`Broadcast sent to ${data.recipients_count || 0} recipients`);
+      const whatsappStatus =
+        data.whatsapp_sent !== undefined
+          ? ` · WhatsApp: ${data.whatsapp_sent} delivered, ${data.whatsapp_failed || 0} failed`
+          : "";
+      setBcResult(
+        `Broadcast sent to ${data.recipients_count || 0} recipients${whatsappStatus}`
+      );
       setBcTitle("");
       setBcContent("");
       setBcGrades([]);

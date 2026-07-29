@@ -3,14 +3,14 @@
 import base64
 import json
 import logging
-import os
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from fastapi.responses import Response
 from pydantic import BaseModel
 
 from app.database import get_db
-from app.routes.auth import get_current_user, require_admin
+from app.routes.auth import require_admin
+from app.services.whatsapp import send_announcement
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -233,13 +233,42 @@ async def send_broadcast(body: BroadcastRequest, user: dict = Depends(require_ad
         sent_count += 1
 
     conn.commit()
+
+    parent_phones = []
+    if parent_ids:
+        placeholders = ",".join("?" for _ in parent_ids)
+        parent_phones = [
+            row["phone"].strip()
+            for row in conn.execute(
+                f"SELECT phone FROM users WHERE id IN ({placeholders})",
+                parent_ids,
+            ).fetchall()
+            if row["phone"] and row["phone"].strip()
+        ]
     conn.close()
+
+    announcement = (
+        f"{body.title}: {body.content}" if body.title.strip() else body.content
+    )
+    whatsapp_sent = 0
+    whatsapp_failed = 0
+    for phone in parent_phones:
+        try:
+            if await send_announcement(phone, announcement):
+                whatsapp_sent += 1
+            else:
+                whatsapp_failed += 1
+        except Exception:
+            logger.exception("WhatsApp broadcast delivery failed for a parent")
+            whatsapp_failed += 1
 
     return {
         "success": True,
         "broadcast_id": broadcast_id,
         "sent_count": sent_count,
         "recipients_count": sent_count,
+        "whatsapp_sent": whatsapp_sent,
+        "whatsapp_failed": whatsapp_failed,
     }
 
 
