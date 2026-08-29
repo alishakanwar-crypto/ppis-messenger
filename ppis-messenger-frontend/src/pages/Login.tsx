@@ -14,7 +14,7 @@ import StudentAvatar from "../components/StudentAvatar";
 type Step = "phone" | "otp" | "pin" | "success";
 type PinStage = "phone" | "login" | "verify";
 
-const PIN_ONLY_AUTH = import.meta.env.VITE_PIN_ONLY_AUTH === "true";
+const PIN_ONLY_AUTH = import.meta.env.VITE_PIN_ONLY_AUTH !== "false";
 const PIN_MIN_LENGTH = Number(import.meta.env.VITE_PIN_MIN_LENGTH || "8");
 
 export default function Login() {
